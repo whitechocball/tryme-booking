@@ -2,11 +2,11 @@ const db = require('../utils/db');
 const logger = require('../utils/logger');
 
 class Therapist {
-  static async create(name, locationId, wechatId = null, isVip = false) {
+  static async create(name, locationId, externalUserId = null, isVip = false, wechatId = null) {
     try {
       const result = await db.query(
-        'INSERT INTO therapists (name, location_id, wechat_id, is_vip) VALUES ($1, $2, $3, $4) RETURNING *',
-        [name, locationId, wechatId, isVip]
+        'INSERT INTO therapists (name, location_id, external_user_id, wechat_id, is_vip) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+        [name, locationId, externalUserId, wechatId, isVip]
       );
       logger.info('新技師已創建', { name, locationId, isVip });
       return result.rows[0];

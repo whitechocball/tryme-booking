@@ -13,6 +13,7 @@ const noshowRoutes = require('./api/noshowRoutes');
 const locationRoutes = require('./api/locationRoutes');
 const therapistRoutes = require('./api/therapistRoutes');
 const customerRoutes = require('./api/customerRoutes');
+const wechatWebhookRoutes = require('./api/wechatWebhook');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -37,6 +38,9 @@ app.use('/api/noshows', noshowRoutes);
 app.use('/api/locations', locationRoutes);
 app.use('/api/therapists', therapistRoutes);
 app.use('/api/customers', customerRoutes);
+
+// 企業微信 webhook 路由
+app.use('/wechat/webhook', wechatWebhookRoutes);
 
 // 後台管理頁面路由
 app.get('/admin', (req, res) => {

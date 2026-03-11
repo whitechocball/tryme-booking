@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS therapists (
   id SERIAL PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   location_id INTEGER NOT NULL REFERENCES locations(id),
-  wechat_id VARCHAR(100),
+  wechat_id VARCHAR(100), -- 企業微信帳號（已棄用，改用 external_user_id）
+  external_user_id VARCHAR(100), -- 外部聯繫人 ID（技師的普通微信用戶 ID）
   is_vip BOOLEAN DEFAULT FALSE,
   available_time_slots TEXT, -- JSON: {"monday": ["morning", "afternoon", "evening"], ...}
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

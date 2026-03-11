@@ -47,8 +47,8 @@ class BookingService {
       // 獲取客戶的總爽約次數
       const totalNoShowCount = await NoShow.getCountByCustomer(customerId);
 
-      // 發送企業微信通知給技師
-      if (therapist.wechat_id) {
+      // 發送企業微信通知給技師（通過外部聯繫人）
+      if (therapist.external_user_id) {
         const notificationData = {
           bookingId: booking.id,
           customerName: customer.name || `用戶 ${customerId}`,
@@ -61,7 +61,7 @@ class BookingService {
         };
 
         try {
-          await wechatUtil.sendBookingNotification(therapist.wechat_id, notificationData);
+          await wechatUtil.sendBookingNotification(therapist.external_user_id, notificationData);
         } catch (error) {
           logger.error('發送企業微信通知失敗', { error: error.message, therapistId });
           // 不中斷流程，繼續
