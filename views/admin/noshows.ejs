@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tryme 管理後台 - 爽約管理</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background-color: #f5f5f5;
+      color: #333;
+    }
+
+    .container {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 250px;
+      background-color: #2c3e50;
+      color: white;
+      padding: 20px;
+      position: fixed;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    .sidebar h1 {
+      font-size: 24px;
+      margin-bottom: 30px;
+      text-align: center;
+    }
+
+    .sidebar nav ul {
+      list-style: none;
+    }
+
+    .sidebar nav li {
+      margin-bottom: 15px;
+    }
+
+    .sidebar nav a {
+      color: white;
+      text-decoration: none;
+      display: block;
+      padding: 10px 15px;
+      border-radius: 5px;
+      transition: background-color 0.3s;
+    }
+
+    .sidebar nav a:hover {
+      background-color: #34495e;
+    }
+
+    .sidebar nav a.active {
+      background-color: #3498db;
+    }
+
+    .main-content {
+      margin-left: 250px;
+      flex: 1;
+      padding: 30px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .header h1 {
+      font-size: 28px;
+    }
+
+    .filters {
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .filters input, .filters select {
+      padding: 8px 12px;
+      border: 1px solid #bdc3c7;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 10px 20px;
+      background-color: #3498db;
+      color: white;
+      text-decoration: none;
+      border-radius: 5px;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    .btn:hover {
+      background-color: #2980b9;
+    }
+
+    .btn-danger {
+      background-color: #e74c3c;
+    }
+
+    .btn-danger:hover {
+      background-color: #c0392b;
+    }
+
+    .btn-success {
+      background-color: #27ae60;
+    }
+
+    .btn-success:hover {
+      background-color: #229954;
+    }
+
+    .content-section {
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    table th {
+      background-color: #ecf0f1;
+      padding: 12px;
+      text-align: left;
+      font-weight: 600;
+      border-bottom: 2px solid #bdc3c7;
+    }
+
+    table td {
+      padding: 12px;
+      border-bottom: 1px solid #ecf0f1;
+    }
+
+    table tr:hover {
+      background-color: #f9f9f9;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 5px;
+    }
+
+    .action-buttons .btn {
+      padding: 5px 10px;
+      font-size: 12px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #7f8c8d;
+    }
+
+    .error {
+      background-color: #ffe6e6;
+      color: #c0392b;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+
+    .success {
+      background-color: #e6ffe6;
+      color: #27ae60;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 100%;
+        height: auto;
+        position: relative;
+      }
+
+      .main-content {
+        margin-left: 0;
+      }
+
+      .filters {
+        flex-direction: column;
+      }
+
+      table {
+        font-size: 12px;
+      }
+
+      table th, table td {
+        padding: 8px;
+      }
+
+      .action-buttons {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="sidebar">
+      <h1>Tryme</h1>
+      <nav>
+        <ul>
+          <li><a href="/admin">儀表板</a></li>
+          <li><a href="/admin/bookings">預約管理</a></li>
+          <li><a href="/admin/noshows" class="active">爽約管理</a></li>
+          <li><a href="/admin/locations">場所管理</a></li>
+          <li><a href="/admin/therapists">技師管理</a></li>
+          <li><a href="/admin/customers">客戶管理</a></li>
+        </ul>
+      </nav>
+    </div>
+
+    <div class="main-content">
+      <div class="header">
+        <h1>爽約管理</h1>
+      </div>
+
+      <div class="filters">
+        <input type="date" id="filter-start-date" placeholder="開始日期">
+        <input type="date" id="filter-end-date" placeholder="結束日期">
+        <button class="btn" onclick="loadNoShows()">搜索</button>
+      </div>
+
+      <div class="content-section">
+        <div id="message"></div>
+        <div id="noshows-container" class="loading">加載中...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function loadNoShows() {
+      try {
+        const startDate = document.getElementById('filter-start-date').value;
+        const endDate = document.getElementById('filter-end-date').value;
+
+        let url = '/api/noshows';
+        const params = new URLSearchParams();
+        if (startDate) params.append('startDate', startDate);
+        if (endDate) params.append('endDate', endDate);
+        if (params.toString()) url += '?' + params.toString();
+
+        const response = await fetch(url);
+        const noShows = await response.json();
+
+        let html = '<table><thead><tr><th>爽約ID</th><th>客戶</th><th>技師</th><th>場所</th><th>爽約日期</th><th>原因</th><th>報告者</th><th>操作</th></tr></thead><tbody>';
+
+        for (const noShow of noShows) {
+          html += `
+            <tr>
+              <td>${noShow.id}</td>
+              <td>${noShow.customer_name || '未知'}</td>
+              <td>${noShow.therapist_name || '未知'}</td>
+              <td>${noShow.location_name || '未知'}</td>
+              <td>${noShow.no_show_date}</td>
+              <td>${noShow.reason || '-'}</td>
+              <td>${noShow.reported_by}</td>
+              <td>
+                <div class="action-buttons">
+                  <button class="btn btn-danger" onclick="deleteNoShow(${noShow.id})">撤銷</button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }
+
+        html += '</tbody></table>';
+        document.getElementById('noshows-container').innerHTML = html;
+      } catch (error) {
+        console.error('加載爽約記錄失敗:', error);
+        document.getElementById('noshows-container').innerHTML = '<div class="error">加載失敗</div>';
+      }
+    }
+
+    async function deleteNoShow(noShowId) {
+      if (!confirm('確定要撤銷此爽約記錄嗎？')) return;
+
+      try {
+        const response = await fetch(`/api/noshows/${noShowId}`, {
+          method: 'DELETE',
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          showMessage('爽約記錄已撤銷', 'success');
+          loadNoShows();
+        } else {
+          showMessage('撤銷失敗', 'error');
+        }
+      } catch (error) {
+        showMessage('撤銷失敗: ' + error.message, 'error');
+      }
+    }
+
+    function showMessage(message, type) {
+      const messageDiv = document.getElementById('message');
+      messageDiv.className = type;
+      messageDiv.textContent = message;
+      setTimeout(() => {
+        messageDiv.textContent = '';
+        messageDiv.className = '';
+      }, 3000);
+    }
+
+    // 初始化
+    loadNoShows();
+  </script>
+</body>
+</html>

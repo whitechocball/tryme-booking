@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tryme 管理後台 - 場所管理</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background-color: #f5f5f5;
+      color: #333;
+    }
+
+    .container {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 250px;
+      background-color: #2c3e50;
+      color: white;
+      padding: 20px;
+      position: fixed;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    .sidebar h1 {
+      font-size: 24px;
+      margin-bottom: 30px;
+      text-align: center;
+    }
+
+    .sidebar nav ul {
+      list-style: none;
+    }
+
+    .sidebar nav li {
+      margin-bottom: 15px;
+    }
+
+    .sidebar nav a {
+      color: white;
+      text-decoration: none;
+      display: block;
+      padding: 10px 15px;
+      border-radius: 5px;
+      transition: background-color 0.3s;
+    }
+
+    .sidebar nav a:hover {
+      background-color: #34495e;
+    }
+
+    .sidebar nav a.active {
+      background-color: #3498db;
+    }
+
+    .main-content {
+      margin-left: 250px;
+      flex: 1;
+      padding: 30px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .header h1 {
+      font-size: 28px;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 10px 20px;
+      background-color: #3498db;
+      color: white;
+      text-decoration: none;
+      border-radius: 5px;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    .btn:hover {
+      background-color: #2980b9;
+    }
+
+    .btn-danger {
+      background-color: #e74c3c;
+    }
+
+    .btn-danger:hover {
+      background-color: #c0392b;
+    }
+
+    .btn-success {
+      background-color: #27ae60;
+    }
+
+    .btn-success:hover {
+      background-color: #229954;
+    }
+
+    .content-section {
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+
+    .form-group input, .form-group textarea {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #bdc3c7;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+
+    .form-group textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    table th {
+      background-color: #ecf0f1;
+      padding: 12px;
+      text-align: left;
+      font-weight: 600;
+      border-bottom: 2px solid #bdc3c7;
+    }
+
+    table td {
+      padding: 12px;
+      border-bottom: 1px solid #ecf0f1;
+    }
+
+    table tr:hover {
+      background-color: #f9f9f9;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 5px;
+    }
+
+    .action-buttons .btn {
+      padding: 5px 10px;
+      font-size: 12px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #7f8c8d;
+    }
+
+    .error {
+      background-color: #ffe6e6;
+      color: #c0392b;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+
+    .success {
+      background-color: #e6ffe6;
+      color: #27ae60;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+
+    .form-section {
+      margin-bottom: 30px;
+      padding-bottom: 30px;
+      border-bottom: 1px solid #ecf0f1;
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 100%;
+        height: auto;
+        position: relative;
+      }
+
+      .main-content {
+        margin-left: 0;
+      }
+
+      table {
+        font-size: 12px;
+      }
+
+      table th, table td {
+        padding: 8px;
+      }
+
+      .action-buttons {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="sidebar">
+      <h1>Tryme</h1>
+      <nav>
+        <ul>
+          <li><a href="/admin">儀表板</a></li>
+          <li><a href="/admin/bookings">預約管理</a></li>
+          <li><a href="/admin/noshows">爽約管理</a></li>
+          <li><a href="/admin/locations" class="active">場所管理</a></li>
+          <li><a href="/admin/therapists">技師管理</a></li>
+          <li><a href="/admin/customers">客戶管理</a></li>
+        </ul>
+      </nav>
+    </div>
+
+    <div class="main-content">
+      <div class="header">
+        <h1>場所管理</h1>
+      </div>
+
+      <div class="content-section">
+        <div class="form-section">
+          <h2>新增場所</h2>
+          <div id="message"></div>
+          <form onsubmit="createLocation(event)">
+            <div class="form-group">
+              <label>場所代碼</label>
+              <input type="text" id="code" required placeholder="例如: 007">
+            </div>
+            <div class="form-group">
+              <label>場所名稱</label>
+              <input type="text" id="name" required placeholder="例如: 黃金海岸">
+            </div>
+            <div class="form-group">
+              <label>描述</label>
+              <textarea id="description" placeholder="場所描述"></textarea>
+            </div>
+            <button type="submit" class="btn">新增</button>
+          </form>
+        </div>
+
+        <h2>場所列表</h2>
+        <div id="locations-container" class="loading">加載中...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function loadLocations() {
+      try {
+        const response = await fetch('/api/locations');
+        const locations = await response.json();
+
+        let html = '<table><thead><tr><th>代碼</th><th>名稱</th><th>描述</th><th>操作</th></tr></thead><tbody>';
+
+        for (const location of locations) {
+          html += `
+            <tr>
+              <td>${location.code}</td>
+              <td>${location.name}</td>
+              <td>${location.description || '-'}</td>
+              <td>
+                <div class="action-buttons">
+                  <button class="btn" onclick="editLocation(${location.id})">編輯</button>
+                  <button class="btn btn-danger" onclick="deleteLocation(${location.id})">刪除</button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }
+
+        html += '</tbody></table>';
+        document.getElementById('locations-container').innerHTML = html;
+      } catch (error) {
+        console.error('加載場所失敗:', error);
+        document.getElementById('locations-container').innerHTML = '<div class="error">加載失敗</div>';
+      }
+    }
+
+    async function createLocation(event) {
+      event.preventDefault();
+
+      const code = document.getElementById('code').value;
+      const name = document.getElementById('name').value;
+      const description = document.getElementById('description').value;
+
+      try {
+        const response = await fetch('/api/locations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, name, description }),
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          showMessage('場所已新增', 'success');
+          document.getElementById('code').value = '';
+          document.getElementById('name').value = '';
+          document.getElementById('description').value = '';
+          loadLocations();
+        } else {
+          showMessage('新增失敗', 'error');
+        }
+      } catch (error) {
+        showMessage('新增失敗: ' + error.message, 'error');
+      }
+    }
+
+    async function editLocation(locationId) {
+      const name = prompt('輸入新的場所名稱:');
+      if (name === null) return;
+
+      try {
+        const response = await fetch(`/api/locations/${locationId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          showMessage('場所已更新', 'success');
+          loadLocations();
+        } else {
+          showMessage('更新失敗', 'error');
+        }
+      } catch (error) {
+        showMessage('更新失敗: ' + error.message, 'error');
+      }
+    }
+
+    async function deleteLocation(locationId) {
+      if (!confirm('確定要刪除此場所嗎？')) return;
+
+      try {
+        const response = await fetch(`/api/locations/${locationId}`, {
+          method: 'DELETE',
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          showMessage('場所已刪除', 'success');
+          loadLocations();
+        } else {
+          showMessage('刪除失敗', 'error');
+        }
+      } catch (error) {
+        showMessage('刪除失敗: ' + error.message, 'error');
+      }
+    }
+
+    function showMessage(message, type) {
+      const messageDiv = document.getElementById('message');
+      messageDiv.className = type;
+      messageDiv.textContent = message;
+      setTimeout(() => {
+        messageDiv.textContent = '';
+        messageDiv.className = '';
+      }, 3000);
+    }
+
+    // 初始化
+    loadLocations();
+  </script>
+</body>
+</html>
