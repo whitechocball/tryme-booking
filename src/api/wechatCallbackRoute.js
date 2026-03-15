@@ -120,22 +120,23 @@ async function processWechatMessage(xmlBody) {
  * 從 XML 中提取字段值
  */
 function extractXmlField(xml, fieldName) {
-  // 嘗試 CDATA 格式 - 使用字符串拼接避免正則轉義問題
-  const cdataRegex = new RegExp('<' + fieldName + '><!\\[CDATA\\[([\\s\\S]*?)\\]\\]></' + fieldName + '>');
-  const cdataMatch = xml.match(cdataRegex);
-  if (cdataMatch) return cdataMatch[1];
-
-  // 嘗試更寬鬆的 CDATA 匹配
-  const cdataRegex2 = new RegExp('<' + fieldName + '>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</' + fieldName + '>');
-  const cdataMatch2 = xml.match(cdataRegex2);
-  if (cdataMatch2) return cdataMatch2[1];
-
-  // 嘗試普通格式
-  const normalRegex = new RegExp('<' + fieldName + '>([^<]*)</' + fieldName + '>');
-  const normalMatch = xml.match(normalRegex);
-  if (normalMatch) return normalMatch[1].trim();
-
-  return null;
+  // 更加魯棒的 XML 字段提取方法
+  const tagStart = `<${fieldName}>`;
+  const tagEnd = `</${fieldName}>`;
+  
+  const startIndex = xml.indexOf(tagStart);
+  const endIndex = xml.indexOf(tagEnd);
+  
+  if (startIndex === -1 || endIndex === -1) return null;
+  
+  let content = xml.substring(startIndex + tagStart.length, endIndex).trim();
+  
+  // 處理 CDATA
+  if (content.startsWith('<![CDATA[') && content.endsWith(']]>')) {
+    return content.substring(9, content.length - 3);
+  }
+  
+  return content;
 }
 
 /**
