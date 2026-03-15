@@ -116,7 +116,9 @@ class Booking {
 
   static async getAll(filters = {}) {
     try {
-      let query = `SELECT b.*,
+      let query = `SELECT b.id, b.customer_id, b.therapist_id, b.location_id, b.booking_date, 
+                          b.time_slot, b.time_option, b.status, b.therapist_response_at, 
+                          b.created_at, b.updated_at,
                           c.name as customer_name, c.telegram_id,
                           t.id as therapist_id, t.name as therapist_name,
                           l.name as location_name, l.code as location_code
