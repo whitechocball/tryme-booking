@@ -53,9 +53,9 @@ class Booking {
   static async getById(bookingId) {
     try {
       const result = await db.query(
-        `SELECT b.*, b.booking_code,
+        `SELECT b.*,
                 c.name as customer_name, c.telegram_id,
-                t.id as therapist_id, t.name as therapist_name, t.external_user_id, t.wechat_id, t.profile_pic_url, t.work_start_time, t.work_end_time,
+                t.id as therapist_id, t.name as therapist_name,
                 l.name as location_name, l.code as location_code
          FROM bookings b
          LEFT JOIN customers c ON b.customer_id = c.id
@@ -74,9 +74,9 @@ class Booking {
   static async getByCustomer(customerId) {
     try {
       const result = await db.query(
-        `SELECT b.*, b.booking_code,
+        `SELECT b.*,
                 c.name as customer_name, c.telegram_id,
-                t.id as therapist_id, t.name as therapist_name, t.wechat_id, t.profile_pic_url, t.work_start_time, t.work_end_time,
+                t.id as therapist_id, t.name as therapist_name,
                 l.name as location_name, l.code as location_code
          FROM bookings b
          LEFT JOIN customers c ON b.customer_id = c.id
@@ -96,9 +96,9 @@ class Booking {
   static async getByTherapist(therapistId) {
     try {
       const result = await db.query(
-        `SELECT b.*, b.booking_code,
+        `SELECT b.*,
                 c.name as customer_name, c.telegram_id,
-                t.id as therapist_id, t.name as therapist_name, t.wechat_id, t.profile_pic_url, t.work_start_time, t.work_end_time,
+                t.id as therapist_id, t.name as therapist_name,
                 l.name as location_name, l.code as location_code
          FROM bookings b
          LEFT JOIN customers c ON b.customer_id = c.id
@@ -117,9 +117,9 @@ class Booking {
 
   static async getAll(filters = {}) {
     try {
-      let query = `SELECT b.*, b.booking_code,
+      let query = `SELECT b.*,
                           c.name as customer_name, c.telegram_id,
-                          t.id as therapist_id, t.name as therapist_name, t.external_user_id, t.wechat_id, t.profile_pic_url, t.work_start_time, t.work_end_time,
+                          t.id as therapist_id, t.name as therapist_name,
                           l.name as location_name, l.code as location_code
                    FROM bookings b
                    LEFT JOIN customers c ON b.customer_id = c.id
@@ -190,9 +190,9 @@ class Booking {
   static async getByDateRange(startDate, endDate) {
     try {
       const result = await db.query(
-        `SELECT b.*, b.booking_code,
+        `SELECT b.*,
                 c.name as customer_name, c.telegram_id,
-                t.id as therapist_id, t.name as therapist_name, t.wechat_id, t.profile_pic_url, t.work_start_time, t.work_end_time,
+                t.id as therapist_id, t.name as therapist_name,
                 l.name as location_name, l.code as location_code
          FROM bookings b
          LEFT JOIN customers c ON b.customer_id = c.id
