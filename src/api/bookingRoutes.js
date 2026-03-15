@@ -22,7 +22,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// 獲取技師排名
+// 獲取技師排名 (必須在 /:id 之前)
 router.get('/ranking', async (req, res) => {
   try {
     const days = parseInt(req.query.days) || 30;

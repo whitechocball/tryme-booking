@@ -214,6 +214,7 @@ class Booking {
    */
   static async getTherapistRanking(days = 30) {
     try {
+      // 確保 display_number 欄位存在
       const result = await db.query(
         `SELECT t.id, t.name as therapist_name, t.display_number,
                 l.name as location_name, l.code as location_code,
@@ -230,6 +231,23 @@ class Booking {
       return result.rows;
     } catch (error) {
       logger.error('獲取技師排名失敗', { error: error.message });
+      // 如果 display_number 報錯，回退到不包含該欄位的查詢
+      if (error.message.includes('display_number')) {
+        const fallbackResult = await db.query(
+          `SELECT t.id, t.name as therapist_name,
+                  l.name as location_name, l.code as location_code,
+                  COUNT(b.id) as booking_count
+           FROM bookings b
+           JOIN therapists t ON b.therapist_id = t.id
+           LEFT JOIN locations l ON t.location_id = l.id
+           WHERE b.created_at >= NOW() - INTERVAL '1 day' * $1
+             AND b.status NOT IN ('therapist_cancelled')
+           GROUP BY t.id, t.name, l.name, l.code
+           ORDER BY booking_count DESC`,
+          [days]
+        );
+        return fallbackResult.rows;
+      }
       throw error;
     }
   }
