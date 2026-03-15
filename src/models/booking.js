@@ -214,9 +214,10 @@ class Booking {
    */
   static async getTherapistRanking(days = 30) {
     try {
-      // 確保 display_number 欄位存在
+      // 嘗試包含 display_number，如果列不存在則回退
       const result = await db.query(
-        `SELECT t.id, t.name as therapist_name, t.display_number,
+        `SELECT t.id, t.name as therapist_name, 
+                COALESCE(t.display_number, '') as display_number,
                 l.name as location_name, l.code as location_code,
                 COUNT(b.id) as booking_count
          FROM bookings b
@@ -233,8 +234,10 @@ class Booking {
       logger.error('獲取技師排名失敗', { error: error.message });
       // 如果 display_number 報錯，回退到不包含該欄位的查詢
       if (error.message.includes('display_number')) {
+        logger.info('display_number 列不存在，使用回退查詢');
         const fallbackResult = await db.query(
           `SELECT t.id, t.name as therapist_name,
+                  '' as display_number,
                   l.name as location_name, l.code as location_code,
                   COUNT(b.id) as booking_count
            FROM bookings b
