@@ -171,6 +171,59 @@ class NoShow {
       throw error;
     }
   }
+
+  static async getCustomerNoShowRanking() {
+    try {
+      const result = await db.query(
+        `SELECT c.id, c.name as customer_name, c.telegram_id,
+                COUNT(ns.id) as no_show_count,
+                STRING_AGG(DISTINCT t.name || ' (' || l.code || ' #' || COALESCE(t.display_number, '-') || ')', ', ') as therapists
+         FROM no_shows ns
+         JOIN customers c ON ns.customer_id = c.id
+         LEFT JOIN therapists t ON ns.therapist_id = t.id
+         LEFT JOIN locations l ON t.location_id = l.id
+         GROUP BY c.id, c.name, c.telegram_id
+         ORDER BY no_show_count DESC`
+      );
+      return result.rows;
+    } catch (error) {
+      logger.error('查詢客戶爽約排名失敗', { error: error.message });
+      throw error;
+    }
+  }
+
+  static async getTherapistNoShowDetails() {
+    try {
+      const result = await db.query(
+        `SELECT ns.*, c.name as customer_name, c.telegram_id,
+                t.name as therapist_name, t.wechat_id, t.display_number,
+                l.name as location_name, l.code as location_code
+         FROM no_shows ns
+         JOIN therapists t ON ns.therapist_id = t.id
+         LEFT JOIN customers c ON ns.customer_id = c.id
+         LEFT JOIN locations l ON t.location_id = l.id
+         ORDER BY ns.no_show_date DESC`
+      );
+      return result.rows;
+    } catch (error) {
+      logger.error('查詢技師爽約詳情失敗', { error: error.message });
+      throw error;
+    }
+  }
+
+  static async updateTherapistNotes(noShowId, notes) {
+    try {
+      const result = await db.query(
+        `UPDATE no_shows SET therapist_notes = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+        [notes, noShowId]
+      );
+      logger.info('技師爽約備註已更新', { noShowId });
+      return result.rows[0];
+    } catch (error) {
+      logger.error('更新技師爽約備註失敗', { error: error.message, noShowId });
+      throw error;
+    }
+  }
 }
 
 module.exports = NoShow;

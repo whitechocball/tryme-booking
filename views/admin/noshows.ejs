@@ -5,6 +5,113 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tryme 管理後台 - 爽約管理</title>
   <link rel="stylesheet" href="/admin-styles.css">
+  <style>
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #e5e7eb;
+    }
+    .tab-btn {
+      padding: 10px 20px;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      color: #6b7280;
+      transition: all 0.3s ease;
+    }
+    .tab-btn.active {
+      color: #1f2937;
+      border-bottom-color: #3b82f6;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .ranking-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    .ranking-card {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .ranking-card h3 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+      color: #1f2937;
+    }
+    .ranking-card p {
+      margin: 5px 0;
+      font-size: 14px;
+      color: #6b7280;
+    }
+    .no-show-count {
+      font-size: 24px;
+      font-weight: bold;
+      color: #ef4444;
+      margin: 10px 0;
+    }
+    .therapist-list {
+      font-size: 13px;
+      color: #4b5563;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #f3f4f6;
+    }
+    .notes-cell {
+      max-width: 150px;
+    }
+    .notes-input {
+      width: 100%;
+      padding: 4px 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: inherit;
+    }
+    .notes-input:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    .btn-save-notes {
+      padding: 4px 8px;
+      font-size: 12px;
+      background: #10b981;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-left: 5px;
+    }
+    .btn-save-notes:hover {
+      background: #059669;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #9ca3af;
+    }
+    @media (max-width: 768px) {
+      .ranking-container {
+        grid-template-columns: 1fr;
+      }
+      .table-wrapper {
+        overflow-x: auto;
+      }
+    }
+  </style>
 </head>
 <body>
   <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
@@ -33,17 +140,40 @@
         <h1>爽約管理</h1>
       </div>
 
-      <div class="filters">
-        <input type="date" id="filter-start-date">
-        <span style="color:#6b7280;">至</span>
-        <input type="date" id="filter-end-date">
-        <button class="btn" onclick="loadNoShows()">搜索</button>
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('customer')">客戶爽約</button>
+        <button class="tab-btn" onclick="switchTab('therapist')">技師爽約</button>
       </div>
 
-      <div class="content-section">
-        <div id="message"></div>
-        <div class="table-wrapper">
-          <div id="noshows-container" class="loading">加載中...</div>
+      <div id="message"></div>
+
+      <!-- 客戶爽約部分 -->
+      <div id="customer" class="tab-content active">
+        <div class="content-section">
+          <h2>客戶爽約排名</h2>
+          <div id="customer-ranking-container" class="ranking-container loading">加載中...</div>
+          
+          <h2 style="margin-top: 40px;">備註</h2>
+          <p style="color: #6b7280; font-size: 14px;">
+            此排名顯示曾經有爽約記錄的客戶。後續將通過 Telegram Bot 跟進這些客戶，要求他們支付費用以刪除爽約記錄。
+          </p>
+        </div>
+      </div>
+
+      <!-- 技師爽約部分 -->
+      <div id="therapist" class="tab-content">
+        <div class="content-section">
+          <h2>技師爽約記錄</h2>
+          <div class="filters" style="margin-bottom: 20px;">
+            <input type="date" id="filter-start-date">
+            <span style="color:#6b7280;">至</span>
+            <input type="date" id="filter-end-date">
+            <button class="btn" onclick="loadTherapistNoShows()">搜索</button>
+          </div>
+
+          <div class="table-wrapper">
+            <div id="therapist-noshows-container" class="loading">加載中...</div>
+          </div>
         </div>
       </div>
     </div>
@@ -55,12 +185,71 @@
       document.getElementById('sidebarOverlay').classList.toggle('show');
     }
 
-    async function loadNoShows() {
-      try {
-        const startDate = document.getElementById('filter-start-date').value;
-        const endDate = document.getElementById('filter-end-date').value;
+    function switchTab(tabName) {
+      // 隱藏所有 tab
+      document.querySelectorAll('.tab-content').forEach(el => {
+        el.classList.remove('active');
+      });
+      document.querySelectorAll('.tab-btn').forEach(el => {
+        el.classList.remove('active');
+      });
 
-        let url = '/api/noshows';
+      // 顯示選中的 tab
+      document.getElementById(tabName).classList.add('active');
+      event.target.classList.add('active');
+
+      // 加載對應的數據
+      if (tabName === 'customer') {
+        loadCustomerRanking();
+      } else {
+        loadTherapistNoShows();
+      }
+    }
+
+    async function loadCustomerRanking() {
+      try {
+        const response = await fetch('/api/noshows/ranking/customer');
+        const ranking = await response.json();
+
+        if (!ranking || ranking.length === 0) {
+          document.getElementById('customer-ranking-container').innerHTML = 
+            '<div class="empty-state">暫無客戶爽約記錄</div>';
+          return;
+        }
+
+        let html = '';
+        ranking.forEach((customer, idx) => {
+          html += `
+            <div class="ranking-card">
+              <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div>
+                  <h3>#${idx + 1} ${customer.customer_name || '未知'}</h3>
+                  <p>Telegram ID: ${customer.telegram_id || '未設置'}</p>
+                </div>
+              </div>
+              <div class="no-show-count">${customer.no_show_count} 次爽約</div>
+              <div class="therapist-list">
+                <strong>涉及技師：</strong><br>
+                ${customer.therapists || '無'}
+              </div>
+            </div>
+          `;
+        });
+
+        document.getElementById('customer-ranking-container').innerHTML = html;
+      } catch (error) {
+        console.error('加載客戶爽約排名失敗:', error);
+        document.getElementById('customer-ranking-container').innerHTML = 
+          '<div class="empty-state">加載失敗</div>';
+      }
+    }
+
+    async function loadTherapistNoShows() {
+      try {
+        const startDate = document.getElementById('filter-start-date')?.value;
+        const endDate = document.getElementById('filter-end-date')?.value;
+
+        let url = '/api/noshows/details/therapist';
         const params = new URLSearchParams();
         if (startDate) params.append('startDate', startDate);
         if (endDate) params.append('endDate', endDate);
@@ -69,46 +258,76 @@
         const response = await fetch(url);
         const noShows = await response.json();
 
-        if (!noShows.length) {
-          document.getElementById('noshows-container').innerHTML = '<div style="text-align:center; color:#9ca3af; padding:24px;">暫無爽約記錄</div>';
+        if (!noShows || noShows.length === 0) {
+          document.getElementById('therapist-noshows-container').innerHTML = 
+            '<div class="empty-state">暫無技師爽約記錄</div>';
           return;
         }
 
-        let html = '<table><thead><tr><th>ID</th><th>客戶</th><th>技師</th><th>爽約日期</th><th>原因</th><th>報告者</th><th>操作</th></tr></thead><tbody>';
+        let html = `
+          <table>
+            <thead>
+              <tr>
+                <th>技師</th>
+                <th>場所</th>
+                <th>工號</th>
+                <th>客戶</th>
+                <th>爽約日期</th>
+                <th>備註</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
 
         for (const ns of noShows) {
-          html += '<tr>';
-          html += '<td>' + ns.id + '</td>';
-          html += '<td>' + (ns.customer_name || '未知') + '</td>';
-          html += '<td>' + (ns.therapist_name || '未知') + '</td>';
-          html += '<td>' + (ns.no_show_date || '') + '</td>';
-          html += '<td>' + (ns.reason || '-') + '</td>';
-          html += '<td>' + (ns.reported_by || '') + '</td>';
-          html += '<td><button class="btn btn-danger btn-sm" onclick="deleteNoShow(' + ns.id + ')">撤銷</button></td>';
-          html += '</tr>';
+          const therapistInfo = ns.therapist_name || '未知';
+          const locationInfo = ns.location_code ? `${ns.location_code} ${ns.location_name || ''}` : '未設置';
+          const workNumber = ns.display_number || '-';
+          const customerInfo = ns.customer_name || `TG:${ns.telegram_id || '未知'}`;
+          const noShowDate = ns.no_show_date || '';
+          const notes = ns.therapist_notes || '';
+
+          html += `
+            <tr>
+              <td>${therapistInfo}</td>
+              <td>${locationInfo}</td>
+              <td>${workNumber}</td>
+              <td>${customerInfo}</td>
+              <td>${noShowDate}</td>
+              <td class="notes-cell">
+                <input type="text" class="notes-input" id="notes-${ns.id}" value="${notes}" placeholder="輸入備註...">
+                <button class="btn-save-notes" onclick="saveNotes(${ns.id})">保存</button>
+              </td>
+            </tr>
+          `;
         }
 
         html += '</tbody></table>';
-        document.getElementById('noshows-container').innerHTML = html;
+        document.getElementById('therapist-noshows-container').innerHTML = html;
       } catch (error) {
-        console.error('加載爽約記錄失敗:', error);
-        document.getElementById('noshows-container').innerHTML = '<div class="msg-error">加載失敗</div>';
+        console.error('加載技師爽約記錄失敗:', error);
+        document.getElementById('therapist-noshows-container').innerHTML = 
+          '<div class="empty-state">加載失敗</div>';
       }
     }
 
-    async function deleteNoShow(noShowId) {
-      if (!confirm('確定要撤銷此爽約記錄嗎？')) return;
+    async function saveNotes(noShowId) {
       try {
-        const response = await fetch('/api/noshows/' + noShowId, { method: 'DELETE' });
+        const notes = document.getElementById(`notes-${noShowId}`).value;
+        const response = await fetch(`/api/noshows/${noShowId}/notes`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notes })
+        });
+
         const result = await response.json();
         if (result.success) {
-          showMessage('爽約記錄已撤銷', 'success');
-          loadNoShows();
+          showMessage('備註已保存', 'success');
         } else {
-          showMessage('撤銷失敗', 'error');
+          showMessage('保存失敗', 'error');
         }
       } catch (error) {
-        showMessage('撤銷失敗: ' + error.message, 'error');
+        showMessage('保存失敗: ' + error.message, 'error');
       }
     }
 
@@ -119,7 +338,8 @@
       setTimeout(() => { div.textContent = ''; div.className = ''; }, 3000);
     }
 
-    loadNoShows();
+    // 初始加載
+    loadCustomerRanking();
   </script>
 </body>
 </html>

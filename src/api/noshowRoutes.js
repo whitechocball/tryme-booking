@@ -84,13 +84,50 @@ router.get('/customer/:customerId', async (req, res) => {
   }
 });
 
-// 獲取技師爽約記錄
+// 获取技师爽约记录
 router.get('/therapist/:therapistId', async (req, res) => {
   try {
     const noShows = await NoShow.getByTherapist(req.params.therapistId);
     res.json(noShows);
   } catch (error) {
-    logger.error('獲取技師爽約記錄失敗', { error: error.message });
+    logger.error('获取技师爽约记录失败', { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 获取客户爽约排名
+router.get('/ranking/customer', async (req, res) => {
+  try {
+    const ranking = await NoShow.getCustomerNoShowRanking();
+    res.json(ranking);
+  } catch (error) {
+    logger.error('获取客户爽约排名失败', { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 获取技师爽约详细记录
+router.get('/details/therapist', async (req, res) => {
+  try {
+    const details = await NoShow.getTherapistNoShowDetails();
+    res.json(details);
+  } catch (error) {
+    logger.error('获取技师爽约详情失败', { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 更新技师爽约备注
+router.put('/:id/notes', async (req, res) => {
+  try {
+    const { notes } = req.body;
+    if (notes === undefined) {
+      return res.status(400).json({ error: '缺少备注内容' });
+    }
+    const updated = await NoShow.updateTherapistNotes(req.params.id, notes);
+    res.json({ success: true, message: '备注已更新', noShow: updated });
+  } catch (error) {
+    logger.error('更新技师爽约备注失败', { error: error.message });
     res.status(500).json({ error: error.message });
   }
 });
