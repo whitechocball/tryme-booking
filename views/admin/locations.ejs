@@ -37,19 +37,31 @@
         <h2>新增場所</h2>
         <div id="message"></div>
         <form onsubmit="createLocation(event)">
-          <div class="form-group">
-            <label>場所代碼</label>
-            <input type="text" id="code" required placeholder="例如: 007">
+          <div class="form-row">
+            <div class="form-group">
+              <label>場所名稱 *</label>
+              <input type="text" id="name" required placeholder="例如: 黃金海岸" onblur="generateCode()">
+            </div>
+            <div class="form-group">
+              <label>場所代碼 *</label>
+              <div style="display: flex; gap: 8px;">
+                <input type="text" id="code" required placeholder="自動生成" readonly style="flex: 1;">
+                <button type="button" class="btn" onclick="generateCode()" style="white-space: nowrap;">自動生成</button>
+              </div>
+            </div>
           </div>
+
           <div class="form-group">
-            <label>場所名稱</label>
-            <input type="text" id="name" required placeholder="例如: 黃金海岸">
+            <label>描述（內部備注）</label>
+            <textarea id="description" placeholder="記錄場所的特色或缺點，僅供後台查看" style="resize:vertical; min-height:60px;"></textarea>
           </div>
+
           <div class="form-group">
-            <label>描述</label>
-            <textarea id="description" placeholder="場所描述" style="resize:vertical; min-height:60px;"></textarea>
+            <label>地圖連結（高德地圖）</label>
+            <input type="url" id="mapUrl" placeholder="https://www.amap.com/search?...">
           </div>
-          <button type="submit" class="btn">新增</button>
+
+          <button type="submit" class="btn">新增場所</button>
         </form>
       </div>
 
@@ -68,6 +80,28 @@
       document.getElementById('sidebarOverlay').classList.toggle('show');
     }
 
+    async function generateCode() {
+      const name = document.getElementById('name').value.trim();
+      if (!name) {
+        document.getElementById('code').value = '';
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/locations/generate-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        const data = await response.json();
+        if (data.code) {
+          document.getElementById('code').value = data.code;
+        }
+      } catch (e) {
+        console.error('生成代碼失敗', e);
+      }
+    }
+
     async function loadLocations() {
       try {
         const response = await fetch('/api/locations');
@@ -78,12 +112,13 @@
           return;
         }
 
-        let html = '<table><thead><tr><th>代碼</th><th>名稱</th><th>描述</th><th>操作</th></tr></thead><tbody>';
+        let html = '<table><thead><tr><th>代碼</th><th>名稱</th><th>描述</th><th>地圖連結</th><th>操作</th></tr></thead><tbody>';
         for (const loc of locations) {
           html += '<tr>';
-          html += '<td>' + loc.code + '</td>';
+          html += '<td><strong>' + loc.code + '</strong></td>';
           html += '<td>' + loc.name + '</td>';
-          html += '<td>' + (loc.description || '-') + '</td>';
+          html += '<td>' + (loc.description ? loc.description.substring(0, 30) + (loc.description.length > 30 ? '...' : '') : '-') + '</td>';
+          html += '<td>' + (loc.map_url ? '<a href="' + loc.map_url + '" target="_blank" style="color:#3b82f6;">查看地圖</a>' : '-') + '</td>';
           html += '<td style="white-space:nowrap;">';
           html += '<button class="btn btn-sm" onclick="editLocation(' + loc.id + ')">編輯</button> ';
           html += '<button class="btn btn-danger btn-sm" onclick="deleteLocation(' + loc.id + ')">刪除</button>';
@@ -98,60 +133,87 @@
 
     async function createLocation(event) {
       event.preventDefault();
-      const code = document.getElementById('code').value;
-      const name = document.getElementById('name').value;
-      const description = document.getElementById('description').value;
+      const code = document.getElementById('code').value.trim();
+      const name = document.getElementById('name').value.trim();
+      const description = document.getElementById('description').value.trim();
+      const mapUrl = document.getElementById('mapUrl').value.trim();
+
+      if (!code || !name) {
+        showMessage('缺少必要欄位', 'error');
+        return;
+      }
+
       try {
-        const res = await fetch('/api/locations', {
+        const response = await fetch('/api/locations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code, name, description }),
+          body: JSON.stringify({ code, name, description: description || null, mapUrl: mapUrl || null })
         });
-        const result = await res.json();
-        if (result.success) {
-          showMessage('場所已新增', 'success');
+        const data = await response.json();
+
+        if (data.success) {
+          showMessage('場所已創建', 'success');
           document.getElementById('code').value = '';
           document.getElementById('name').value = '';
           document.getElementById('description').value = '';
+          document.getElementById('mapUrl').value = '';
           loadLocations();
         } else {
-          showMessage(result.error || '新增失敗', 'error');
+          showMessage(data.error || '創建失敗', 'error');
         }
       } catch (e) {
-        showMessage('新增失敗: ' + e.message, 'error');
+        showMessage('創建失敗: ' + e.message, 'error');
       }
     }
 
     async function editLocation(id) {
       const name = prompt('輸入新的場所名稱:');
-      if (name === null) return;
+      if (!name) return;
+
       try {
-        const res = await fetch('/api/locations/' + id, {
+        const response = await fetch('/api/locations/' + id, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name }),
+          body: JSON.stringify({ name })
         });
-        const result = await res.json();
-        if (result.success) { showMessage('場所已更新', 'success'); loadLocations(); }
-        else showMessage('更新失敗', 'error');
-      } catch (e) { showMessage('更新失敗', 'error'); }
+        const data = await response.json();
+
+        if (data.success) {
+          showMessage('場所已更新', 'success');
+          loadLocations();
+        } else {
+          showMessage(data.error || '更新失敗', 'error');
+        }
+      } catch (e) {
+        showMessage('更新失敗: ' + e.message, 'error');
+      }
     }
 
     async function deleteLocation(id) {
-      if (!confirm('確定要刪除此場所嗎？')) return;
+      if (!confirm('確認刪除此場所？')) return;
+
       try {
-        const res = await fetch('/api/locations/' + id, { method: 'DELETE' });
-        const result = await res.json();
-        if (result.success) { showMessage('場所已刪除', 'success'); loadLocations(); }
-        else showMessage('刪除失敗', 'error');
-      } catch (e) { showMessage('刪除失敗', 'error'); }
+        const response = await fetch('/api/locations/' + id, {
+          method: 'DELETE'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+          showMessage('場所已刪除', 'success');
+          loadLocations();
+        } else {
+          showMessage(data.error || '刪除失敗', 'error');
+        }
+      } catch (e) {
+        showMessage('刪除失敗: ' + e.message, 'error');
+      }
     }
 
     function showMessage(msg, type) {
-      const div = document.getElementById('message');
-      div.className = type === 'success' ? 'msg-success' : 'msg-error';
-      div.textContent = msg;
-      setTimeout(() => { div.textContent = ''; div.className = ''; }, 3000);
+      const el = document.getElementById('message');
+      el.className = 'msg-' + type;
+      el.textContent = msg;
+      setTimeout(() => { el.textContent = ''; el.className = ''; }, 3000);
     }
 
     loadLocations();

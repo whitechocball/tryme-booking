@@ -36,13 +36,12 @@ function generateBookingCode() {
 class Booking {
   static async create(customerId, therapistId, locationId, bookingDate, timeSlot, timeOption) {
     try {
-      const bookingCode = generateBookingCode();
       const result = await db.query(
-        `INSERT INTO bookings (customer_id, therapist_id, location_id, booking_date, time_slot, time_option, status, booking_code)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-        [customerId, therapistId, locationId, bookingDate, timeSlot, timeOption, BOOKING_STATUS.WAITING_THERAPIST, bookingCode]
+        `INSERT INTO bookings (customer_id, therapist_id, location_id, booking_date, time_slot, time_option, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+        [customerId, therapistId, locationId, bookingDate, timeSlot, timeOption, BOOKING_STATUS.WAITING_THERAPIST]
       );
-      logger.info('新預約已創建', { customerId, therapistId, bookingDate, bookingCode });
+      logger.info('新預約已創建', { customerId, therapistId, bookingDate, bookingId: result.rows[0]?.id });
       return result.rows[0];
     } catch (error) {
       logger.error('創建預約失敗', { error: error.message, customerId, therapistId });

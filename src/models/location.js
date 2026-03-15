@@ -2,11 +2,11 @@ const db = require('../utils/db');
 const logger = require('../utils/logger');
 
 class Location {
-  static async create(code, name, description = null) {
+  static async create(code, name, description = null, mapUrl = null) {
     try {
       const result = await db.query(
-        'INSERT INTO locations (code, name, description) VALUES ($1, $2, $3) RETURNING *',
-        [code, name, description]
+        'INSERT INTO locations (code, name, description, map_url) VALUES ($1, $2, $3, $4) RETURNING *',
+        [code, name, description, mapUrl]
       );
       logger.info('新場所已創建', { code, name });
       return result.rows[0];

@@ -177,7 +177,7 @@ class NoShow {
       const result = await db.query(
         `SELECT c.id, c.name as customer_name, c.telegram_id,
                 COUNT(ns.id) as no_show_count,
-                STRING_AGG(DISTINCT t.name || ' (' || l.code || ' #' || COALESCE(t.display_number, '-') || ')', ', ') as therapists
+                STRING_AGG(DISTINCT t.name || ' (' || l.code || ')', ', ') as therapists
          FROM no_shows ns
          JOIN customers c ON ns.customer_id = c.id
          LEFT JOIN therapists t ON ns.therapist_id = t.id
@@ -196,7 +196,7 @@ class NoShow {
     try {
       const result = await db.query(
         `SELECT ns.*, c.name as customer_name, c.telegram_id,
-                t.name as therapist_name, t.wechat_id, t.display_number,
+                t.name as therapist_name,
                 l.name as location_name, l.code as location_code
          FROM no_shows ns
          JOIN therapists t ON ns.therapist_id = t.id

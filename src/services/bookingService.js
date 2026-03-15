@@ -51,7 +51,6 @@ class BookingService {
       if (therapist.external_user_id) {
         const notificationData = {
           bookingId: booking.id,
-          bookingCode: booking.booking_code,
           customerName: customer.name || `用戶 ${customerId}`,
           locationName: bookingDetails.location_name,
           bookingDate: bookingDate,
@@ -93,7 +92,6 @@ class BookingService {
           timeSlot: this.getTimeSlotLabel(booking.time_slot),
           timeOption: booking.time_option,
           bookingId: booking.id,
-          bookingCode: booking.booking_code,
         });
       } catch (error) {
         logger.error('發送 Telegram 確認消息失敗', { error: error.message });
