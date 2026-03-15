@@ -211,13 +211,12 @@ class Booking {
 
   /**
    * 獲取技師預約排名（指定天數範圍）
+   * 注意：不包含 display_number 在 SELECT 和 GROUP BY 中，因為該欄位可能不存在
    */
   static async getTherapistRanking(days = 30) {
     try {
-      // 嘗試包含 display_number，如果列不存在則回退
       const result = await db.query(
-        `SELECT t.id, t.name as therapist_name, 
-                COALESCE(t.display_number, '') as display_number,
+        `SELECT t.id, t.name as therapist_name,
                 l.name as location_name, l.code as location_code,
                 COUNT(b.id) as booking_count
          FROM bookings b
@@ -225,32 +224,13 @@ class Booking {
          LEFT JOIN locations l ON t.location_id = l.id
          WHERE b.created_at >= NOW() - INTERVAL '1 day' * $1
            AND b.status NOT IN ('therapist_cancelled')
-         GROUP BY t.id, t.name, t.display_number, l.name, l.code
+         GROUP BY t.id, t.name, l.name, l.code
          ORDER BY booking_count DESC`,
         [days]
       );
       return result.rows;
     } catch (error) {
       logger.error('獲取技師排名失敗', { error: error.message });
-      // 如果 display_number 報錯，回退到不包含該欄位的查詢
-      if (error.message.includes('display_number')) {
-        logger.info('display_number 列不存在，使用回退查詢');
-        const fallbackResult = await db.query(
-          `SELECT t.id, t.name as therapist_name,
-                  '' as display_number,
-                  l.name as location_name, l.code as location_code,
-                  COUNT(b.id) as booking_count
-           FROM bookings b
-           JOIN therapists t ON b.therapist_id = t.id
-           LEFT JOIN locations l ON t.location_id = l.id
-           WHERE b.created_at >= NOW() - INTERVAL '1 day' * $1
-             AND b.status NOT IN ('therapist_cancelled')
-           GROUP BY t.id, t.name, l.name, l.code
-           ORDER BY booking_count DESC`,
-          [days]
-        );
-        return fallbackResult.rows;
-      }
       throw error;
     }
   }
