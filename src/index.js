@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const db = require('./utils/db');
 const { ensureColumns } = require('./utils/ensureColumns');
-const logger = require('../utils/logger');
+const logger = require('./utils/logger');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
