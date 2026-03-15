@@ -27,6 +27,28 @@ app.use(express.static(path.join(__dirname, '../public')));
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, '../views'));
 
+// Basic Auth 中間件（用於後台管理頁面）
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'tryme2024';
+
+function basicAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Basic ')) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Tryme Admin"');
+    return res.status(401).send('需要登入');
+  }
+
+  const base64 = authHeader.split(' ')[1];
+  const [username, password] = Buffer.from(base64, 'base64').toString().split(':');
+
+  if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    return next();
+  }
+
+  res.setHeader('WWW-Authenticate', 'Basic realm="Tryme Admin"');
+  return res.status(401).send('帳號或密碼錯誤');
+}
+
 // 健康檢查 - 包含數據庫狀態
 app.get('/health', async (req, res) => {
   let dbStatus = 'unknown';
@@ -38,13 +60,14 @@ app.get('/health', async (req, res) => {
   }
   res.json({
     status: 'ok',
+    version: 'v1.0',
     database: dbStatus,
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
   });
 });
 
-// API 路由
+// API 路由（API 不需要 Basic Auth，因為 Bot 和 Webhook 會調用）
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/noshows', noshowRoutes);
 app.use('/api/locations', locationRoutes);
@@ -54,28 +77,28 @@ app.use('/api/customers', customerRoutes);
 // 企業微信 webhook 路由
 app.use('/wechat/webhook', wechatWebhookRoutes);
 
-// 後台管理頁面路由
-app.get('/admin', (req, res) => {
+// 後台管理頁面路由（需要 Basic Auth）
+app.get('/admin', basicAuth, (req, res) => {
   res.render('admin/dashboard');
 });
 
-app.get('/admin/bookings', (req, res) => {
+app.get('/admin/bookings', basicAuth, (req, res) => {
   res.render('admin/bookings');
 });
 
-app.get('/admin/noshows', (req, res) => {
+app.get('/admin/noshows', basicAuth, (req, res) => {
   res.render('admin/noshows');
 });
 
-app.get('/admin/locations', (req, res) => {
+app.get('/admin/locations', basicAuth, (req, res) => {
   res.render('admin/locations');
 });
 
-app.get('/admin/therapists', (req, res) => {
+app.get('/admin/therapists', basicAuth, (req, res) => {
   res.render('admin/therapists');
 });
 
-app.get('/admin/customers', (req, res) => {
+app.get('/admin/customers', basicAuth, (req, res) => {
   res.render('admin/customers');
 });
 
@@ -85,7 +108,6 @@ async function runMigrations(maxRetries = 5) {
     try {
       console.log(`🔄 開始執行數據庫遷移 (嘗試 ${attempt}/${maxRetries})...`);
 
-      // 先測試連接
       const connected = await db.checkConnection();
       if (!connected) {
         throw new Error('數據庫連接失敗');
@@ -131,7 +153,7 @@ async function runMigrations(maxRetries = 5) {
     } catch (error) {
       console.error(`❌ 遷移失敗 (嘗試 ${attempt}/${maxRetries}):`, error.message);
       if (attempt < maxRetries) {
-        const delay = attempt * 5000; // 5s, 10s, 15s, 20s, 25s
+        const delay = attempt * 5000;
         console.log(`⏳ 等待 ${delay / 1000} 秒後重試...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
@@ -143,17 +165,14 @@ async function runMigrations(maxRetries = 5) {
 
 // 啟動應用
 async function startApp() {
-  // 先啟動 Express 服務器（確保健康檢查可用）
   app.listen(PORT, '0.0.0.0', () => {
     logger.info('服務器已啟動', { port: PORT });
-    console.log(`🚀 Tryme 預約系統運行在 port ${PORT}`);
+    console.log(`🚀 Tryme 預約系統 v1.0 運行在 port ${PORT}`);
     console.log(`📊 管理後台: /admin`);
   });
 
-  // 然後運行遷移（帶重試）
   await runMigrations();
 
-  // 啟動 Telegram Bot
   try {
     const bot = require('./bot/bookingBot');
     bot.launch().then(() => {
@@ -164,7 +183,6 @@ async function startApp() {
       console.error('❌ Telegram Bot 啟動失敗:', error.message);
     });
 
-    // 優雅關閉
     const shutdown = (signal) => {
       console.log(`收到 ${signal} 信號，正在關閉...`);
       logger.info(`收到 ${signal} 信號，正在關閉...`);
@@ -180,7 +198,6 @@ async function startApp() {
   }
 }
 
-// 未捕獲的異常處理
 process.on('uncaughtException', (error) => {
   console.error('未捕獲的異常:', error.message);
   logger.error('未捕獲的異常', { error: error.message, stack: error.stack });

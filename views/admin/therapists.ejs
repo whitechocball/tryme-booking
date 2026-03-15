@@ -4,318 +4,113 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tryme 管理後台 - 技師管理</title>
+  <link rel="stylesheet" href="/admin-styles.css">
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      background-color: #f5f5f5;
-      color: #333;
-    }
-
-    .container {
-      display: flex;
-      min-height: 100vh;
-    }
-
-    .sidebar {
-      width: 250px;
-      background-color: #2c3e50;
-      color: white;
-      padding: 20px;
-      position: fixed;
-      height: 100vh;
-      overflow-y: auto;
-    }
-
-    .sidebar h1 {
-      font-size: 24px;
-      margin-bottom: 30px;
-      text-align: center;
-    }
-
-    .sidebar nav ul {
-      list-style: none;
-    }
-
-    .sidebar nav li {
-      margin-bottom: 15px;
-    }
-
-    .sidebar nav a {
-      color: white;
-      text-decoration: none;
-      display: block;
-      padding: 10px 15px;
-      border-radius: 5px;
-      transition: background-color 0.3s;
-    }
-
-    .sidebar nav a:hover {
-      background-color: #34495e;
-    }
-
-    .sidebar nav a.active {
-      background-color: #3498db;
-    }
-
-    .main-content {
-      margin-left: 250px;
-      flex: 1;
-      padding: 30px;
-    }
-
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 30px;
-      background-color: white;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    .header h1 {
-      font-size: 28px;
-    }
-
-    .btn {
+    .vip-badge {
       display: inline-block;
-      padding: 10px 20px;
-      background-color: #3498db;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
       color: white;
-      text-decoration: none;
-      border-radius: 5px;
-      border: none;
-      cursor: pointer;
-      transition: background-color 0.3s;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 700;
     }
-
-    .btn:hover {
-      background-color: #2980b9;
-    }
-
-    .btn-danger {
-      background-color: #e74c3c;
-    }
-
-    .btn-danger:hover {
-      background-color: #c0392b;
-    }
-
-    .btn-success {
-      background-color: #27ae60;
-    }
-
-    .btn-success:hover {
-      background-color: #229954;
-    }
-
-    .content-section {
-      background-color: white;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    .form-group {
-      margin-bottom: 15px;
-    }
-
-    .form-group label {
-      display: block;
-      margin-bottom: 5px;
-      font-weight: 600;
-    }
-
-    .form-group input, .form-group select {
-      width: 100%;
-      padding: 8px 12px;
-      border: 1px solid #bdc3c7;
-      border-radius: 5px;
-      font-size: 14px;
-    }
-
     .checkbox-group {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
     }
-
-    .checkbox-group input {
-      width: auto;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-    }
-
-    table th {
-      background-color: #ecf0f1;
-      padding: 12px;
-      text-align: left;
-      font-weight: 600;
-      border-bottom: 2px solid #bdc3c7;
-    }
-
-    table td {
-      padding: 12px;
-      border-bottom: 1px solid #ecf0f1;
-    }
-
-    table tr:hover {
-      background-color: #f9f9f9;
-    }
-
-    .action-buttons {
-      display: flex;
-      gap: 5px;
-    }
-
-    .action-buttons .btn {
-      padding: 5px 10px;
-      font-size: 12px;
-    }
-
-    .vip-badge {
-      display: inline-block;
-      background-color: #f39c12;
-      color: white;
-      padding: 3px 8px;
-      border-radius: 3px;
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    .loading {
-      text-align: center;
-      padding: 40px;
-      color: #7f8c8d;
-    }
-
-    .error {
-      background-color: #ffe6e6;
-      color: #c0392b;
-      padding: 15px;
-      border-radius: 5px;
-      margin-bottom: 20px;
-    }
-
-    .success {
-      background-color: #e6ffe6;
-      color: #27ae60;
-      padding: 15px;
-      border-radius: 5px;
-      margin-bottom: 20px;
-    }
-
-    .form-section {
-      margin-bottom: 30px;
-      padding-bottom: 30px;
-      border-bottom: 1px solid #ecf0f1;
-    }
-
-    @media (max-width: 768px) {
-      .sidebar {
-        width: 100%;
-        height: auto;
-        position: relative;
-      }
-
-      .main-content {
-        margin-left: 0;
-      }
-
-      table {
-        font-size: 12px;
-      }
-
-      table th, table td {
-        padding: 8px;
-      }
-
-      .action-buttons {
-        flex-direction: column;
-      }
+    .checkbox-group input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
     }
   </style>
 </head>
 <body>
+  <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
   <div class="container">
-    <div class="sidebar">
-      <h1>Tryme</h1>
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <h1>Tryme</h1>
+        <span class="version-tag">v1.0 | 2026-03-15</span>
+      </div>
       <nav>
         <ul>
-          <li><a href="/admin">儀表板</a></li>
-          <li><a href="/admin/bookings">預約管理</a></li>
-          <li><a href="/admin/noshows">爽約管理</a></li>
-          <li><a href="/admin/locations">場所管理</a></li>
-          <li><a href="/admin/therapists" class="active">技師管理</a></li>
-          <li><a href="/admin/customers">客戶管理</a></li>
+          <li><a href="/admin"><span class="nav-icon">&#9632;</span> 儀表板</a></li>
+          <li><a href="/admin/bookings"><span class="nav-icon">&#128197;</span> 預約管理</a></li>
+          <li><a href="/admin/noshows"><span class="nav-icon">&#9888;</span> 爽約管理</a></li>
+          <li><a href="/admin/locations"><span class="nav-icon">&#127968;</span> 場所管理</a></li>
+          <li><a href="/admin/therapists" class="active"><span class="nav-icon">&#128100;</span> 技師管理</a></li>
+          <li><a href="/admin/customers"><span class="nav-icon">&#128101;</span> 客戶管理</a></li>
         </ul>
       </nav>
     </div>
 
     <div class="main-content">
-      <div class="header">
+      <div class="page-header">
         <h1>技師管理</h1>
       </div>
 
-      <div class="content-section">
-        <div class="form-section">
-          <h2>新增技師</h2>
-          <div id="message"></div>
-          <form onsubmit="createTherapist(event)">
-            <div class="form-group">
-              <label>技師名稱</label>
-              <input type="text" id="name" required placeholder="例如: 張醫生">
-            </div>
-            <div class="form-group">
-              <label>所屬場所</label>
-              <select id="location-id" required>
-                <option value="">選擇場所...</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>企業微信 ID</label>
-              <input type="text" id="wechat-id" placeholder="技師的企業微信 ID">
-            </div>
-            <div class="form-group checkbox-group">
-              <input type="checkbox" id="is-vip">
-              <label for="is-vip" style="margin: 0;">VIP 技師</label>
-            </div>
-            <button type="submit" class="btn">新增</button>
-          </form>
-        </div>
+      <div class="content-section" style="margin-bottom:24px;">
+        <h2>新增技師</h2>
+        <div id="message"></div>
+        <form onsubmit="createTherapist(event)">
+          <div class="form-group">
+            <label>技師名稱</label>
+            <input type="text" id="name" required placeholder="例如: 小美">
+          </div>
+          <div class="form-group">
+            <label>號碼</label>
+            <input type="text" id="display-number" placeholder="例如: 001">
+          </div>
+          <div class="form-group">
+            <label>所屬場所</label>
+            <select id="location-id" required>
+              <option value="">選擇場所...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>微信外部聯繫人 ID</label>
+            <input type="text" id="external-user-id" placeholder="external_userid">
+          </div>
+          <div class="form-group checkbox-group">
+            <input type="checkbox" id="is-vip">
+            <label for="is-vip" style="margin:0; font-weight:normal;">VIP 技師</label>
+          </div>
+          <button type="submit" class="btn">新增</button>
+        </form>
+      </div>
 
+      <div class="content-section">
         <h2>技師列表</h2>
-        <div id="therapists-container" class="loading">加載中...</div>
+        <div class="table-wrapper">
+          <div id="therapists-container" class="loading">加載中...</div>
+        </div>
       </div>
     </div>
   </div>
 
   <script>
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('open');
+      document.getElementById('sidebarOverlay').classList.toggle('show');
+    }
+
     async function loadLocations() {
       try {
         const response = await fetch('/api/locations');
         const locations = await response.json();
-
         const select = document.getElementById('location-id');
-        for (const location of locations) {
+        for (const loc of locations) {
           const option = document.createElement('option');
-          option.value = location.id;
-          option.textContent = `${location.code} - ${location.name}`;
+          option.value = loc.id;
+          option.textContent = loc.code + ' - ' + loc.name;
           select.appendChild(option);
         }
-      } catch (error) {
-        console.error('加載場所失敗:', error);
+      } catch (e) {
+        console.error('加載場所失敗:', e);
       }
     }
 
@@ -324,119 +119,96 @@
         const response = await fetch('/api/therapists');
         const therapists = await response.json();
 
-        let html = '<table><thead><tr><th>名稱</th><th>場所</th><th>企業微信ID</th><th>VIP</th><th>操作</th></tr></thead><tbody>';
-
-        for (const therapist of therapists) {
-          const vipBadge = therapist.is_vip ? '<span class="vip-badge">VIP</span>' : '-';
-          html += `
-            <tr>
-              <td>${therapist.name}</td>
-              <td>${therapist.location_name || '未知'}</td>
-              <td>${therapist.wechat_id || '-'}</td>
-              <td>${vipBadge}</td>
-              <td>
-                <div class="action-buttons">
-                  <button class="btn" onclick="editTherapist(${therapist.id})">編輯</button>
-                  <button class="btn btn-danger" onclick="deleteTherapist(${therapist.id})">刪除</button>
-                </div>
-              </td>
-            </tr>
-          `;
+        if (!therapists.length) {
+          document.getElementById('therapists-container').innerHTML = '<div style="text-align:center; color:#9ca3af; padding:24px;">暫無技師</div>';
+          return;
         }
 
+        let html = '<table><thead><tr><th>名稱</th><th>號碼</th><th>場所</th><th>微信ID</th><th>VIP</th><th>操作</th></tr></thead><tbody>';
+        for (const t of therapists) {
+          const vip = t.is_vip ? '<span class="vip-badge">VIP</span>' : '-';
+          const wechatDisplay = t.external_user_id || t.wechat_id || '-';
+          html += '<tr>';
+          html += '<td>' + t.name + '</td>';
+          html += '<td>' + (t.display_number || '-') + '</td>';
+          html += '<td>' + (t.location_name || '未知') + '</td>';
+          html += '<td style="font-size:11px; max-width:120px; overflow:hidden; text-overflow:ellipsis;">' + wechatDisplay + '</td>';
+          html += '<td>' + vip + '</td>';
+          html += '<td style="white-space:nowrap;">';
+          html += '<button class="btn btn-sm" onclick="editTherapist(' + t.id + ')">編輯</button> ';
+          html += '<button class="btn btn-danger btn-sm" onclick="deleteTherapist(' + t.id + ')">刪除</button>';
+          html += '</td></tr>';
+        }
         html += '</tbody></table>';
         document.getElementById('therapists-container').innerHTML = html;
-      } catch (error) {
-        console.error('加載技師失敗:', error);
-        document.getElementById('therapists-container').innerHTML = '<div class="error">加載失敗</div>';
+      } catch (e) {
+        document.getElementById('therapists-container').innerHTML = '<div class="msg-error">加載失敗</div>';
       }
     }
 
     async function createTherapist(event) {
       event.preventDefault();
-
       const name = document.getElementById('name').value;
+      const displayNumber = document.getElementById('display-number').value;
       const locationId = parseInt(document.getElementById('location-id').value, 10);
-      const wechatId = document.getElementById('wechat-id').value;
+      const externalUserId = document.getElementById('external-user-id').value;
       const isVip = document.getElementById('is-vip').checked;
 
       try {
-        const response = await fetch('/api/therapists', {
+        const res = await fetch('/api/therapists', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, locationId, wechatId, isVip }),
+          body: JSON.stringify({ name, displayNumber, locationId, externalUserId, isVip }),
         });
-
-        const result = await response.json();
+        const result = await res.json();
         if (result.success) {
           showMessage('技師已新增', 'success');
           document.getElementById('name').value = '';
+          document.getElementById('display-number').value = '';
           document.getElementById('location-id').value = '';
-          document.getElementById('wechat-id').value = '';
+          document.getElementById('external-user-id').value = '';
           document.getElementById('is-vip').checked = false;
           loadTherapists();
         } else {
-          showMessage('新增失敗', 'error');
+          showMessage(result.error || '新增失敗', 'error');
         }
-      } catch (error) {
-        showMessage('新增失敗: ' + error.message, 'error');
+      } catch (e) {
+        showMessage('新增失敗: ' + e.message, 'error');
       }
     }
 
-    async function editTherapist(therapistId) {
+    async function editTherapist(id) {
       const name = prompt('輸入新的技師名稱:');
       if (name === null) return;
-
       try {
-        const response = await fetch(`/api/therapists/${therapistId}`, {
+        const res = await fetch('/api/therapists/' + id, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name }),
         });
-
-        const result = await response.json();
-        if (result.success) {
-          showMessage('技師已更新', 'success');
-          loadTherapists();
-        } else {
-          showMessage('更新失敗', 'error');
-        }
-      } catch (error) {
-        showMessage('更新失敗: ' + error.message, 'error');
-      }
+        const result = await res.json();
+        if (result.success) { showMessage('技師已更新', 'success'); loadTherapists(); }
+        else showMessage('更新失敗', 'error');
+      } catch (e) { showMessage('更新失敗', 'error'); }
     }
 
-    async function deleteTherapist(therapistId) {
+    async function deleteTherapist(id) {
       if (!confirm('確定要刪除此技師嗎？')) return;
-
       try {
-        const response = await fetch(`/api/therapists/${therapistId}`, {
-          method: 'DELETE',
-        });
-
-        const result = await response.json();
-        if (result.success) {
-          showMessage('技師已刪除', 'success');
-          loadTherapists();
-        } else {
-          showMessage('刪除失敗', 'error');
-        }
-      } catch (error) {
-        showMessage('刪除失敗: ' + error.message, 'error');
-      }
+        const res = await fetch('/api/therapists/' + id, { method: 'DELETE' });
+        const result = await res.json();
+        if (result.success) { showMessage('技師已刪除', 'success'); loadTherapists(); }
+        else showMessage('刪除失敗', 'error');
+      } catch (e) { showMessage('刪除失敗', 'error'); }
     }
 
-    function showMessage(message, type) {
-      const messageDiv = document.getElementById('message');
-      messageDiv.className = type;
-      messageDiv.textContent = message;
-      setTimeout(() => {
-        messageDiv.textContent = '';
-        messageDiv.className = '';
-      }, 3000);
+    function showMessage(msg, type) {
+      const div = document.getElementById('message');
+      div.className = type === 'success' ? 'msg-success' : 'msg-error';
+      div.textContent = msg;
+      setTimeout(() => { div.textContent = ''; div.className = ''; }, 3000);
     }
 
-    // 初始化
     loadLocations();
     loadTherapists();
   </script>

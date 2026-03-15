@@ -5,279 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tryme 管理後台 - 預約管理</title>
   <link rel="stylesheet" href="/admin-styles.css">
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      background-color: #f5f5f5;
-      color: #333;
-    }
-
-    .container {
-      display: flex;
-      min-height: 100vh;
-    }
-
-    .sidebar {
-      width: 250px;
-      background-color: #2c3e50;
-      color: white;
-      padding: 20px;
-      position: fixed;
-      height: 100vh;
-      overflow-y: auto;
-    }
-
-    .sidebar h1 {
-      font-size: 24px;
-      margin-bottom: 30px;
-      text-align: center;
-    }
-
-    .sidebar nav ul {
-      list-style: none;
-    }
-
-    .sidebar nav li {
-      margin-bottom: 15px;
-    }
-
-    .sidebar nav a {
-      color: white;
-      text-decoration: none;
-      display: block;
-      padding: 10px 15px;
-      border-radius: 5px;
-      transition: background-color 0.3s;
-    }
-
-    .sidebar nav a:hover {
-      background-color: #34495e;
-    }
-
-    .sidebar nav a.active {
-      background-color: #3498db;
-    }
-
-    .main-content {
-      margin-left: 250px;
-      flex: 1;
-      padding: 30px;
-    }
-
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 30px;
-      background-color: white;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    .header h1 {
-      font-size: 28px;
-    }
-
-    .filters {
-      background-color: white;
-      padding: 20px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      display: flex;
-      gap: 15px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
-    .filters input, .filters select {
-      padding: 8px 12px;
-      border: 1px solid #bdc3c7;
-      border-radius: 5px;
-      font-size: 14px;
-    }
-
-    .btn {
-      display: inline-block;
-      padding: 10px 20px;
-      background-color: #3498db;
-      color: white;
-      text-decoration: none;
-      border-radius: 5px;
-      border: none;
-      cursor: pointer;
-      transition: background-color 0.3s;
-    }
-
-    .btn:hover {
-      background-color: #2980b9;
-    }
-
-    .btn-danger {
-      background-color: #e74c3c;
-    }
-
-    .btn-danger:hover {
-      background-color: #c0392b;
-    }
-
-    .btn-success {
-      background-color: #27ae60;
-    }
-
-    .btn-success:hover {
-      background-color: #229954;
-    }
-
-    .content-section {
-      background-color: white;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-    }
-
-    table th {
-      background-color: #ecf0f1;
-      padding: 12px;
-      text-align: left;
-      font-weight: 600;
-      border-bottom: 2px solid #bdc3c7;
-    }
-
-    table td {
-      padding: 12px;
-      border-bottom: 1px solid #ecf0f1;
-    }
-
-    table tr:hover {
-      background-color: #f9f9f9;
-    }
-
-    .status-badge {
-      display: inline-block;
-      padding: 5px 10px;
-      border-radius: 3px;
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    .status-pending {
-      background-color: #f39c12;
-      color: white;
-    }
-
-    .status-confirmed {
-      background-color: #27ae60;
-      color: white;
-    }
-
-    .status-rejected {
-      background-color: #e74c3c;
-      color: white;
-    }
-
-    .status-completed {
-      background-color: #3498db;
-      color: white;
-    }
-
-    .status-cancelled {
-      background-color: #95a5a6;
-      color: white;
-    }
-
-    .action-buttons {
-      display: flex;
-      gap: 5px;
-    }
-
-    .action-buttons .btn {
-      padding: 5px 10px;
-      font-size: 12px;
-    }
-
-    .loading {
-      text-align: center;
-      padding: 40px;
-      color: #7f8c8d;
-    }
-
-    .error {
-      background-color: #ffe6e6;
-      color: #c0392b;
-      padding: 15px;
-      border-radius: 5px;
-      margin-bottom: 20px;
-    }
-
-    .success {
-      background-color: #e6ffe6;
-      color: #27ae60;
-      padding: 15px;
-      border-radius: 5px;
-      margin-bottom: 20px;
-    }
-
-    @media (max-width: 768px) {
-      .sidebar {
-        width: 100%;
-        height: auto;
-        position: relative;
-      }
-
-      .main-content {
-        margin-left: 0;
-      }
-
-      .filters {
-        flex-direction: column;
-      }
-
-      table {
-        font-size: 12px;
-      }
-
-      table th, table td {
-        padding: 8px;
-      }
-
-      .action-buttons {
-        flex-direction: column;
-      }
-    }
-  </style>
 </head>
 <body>
+  <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
   <div class="container">
-    <div class="sidebar">
-      <h1>Tryme</h1>
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <h1>Tryme</h1>
+        <span class="version-tag">v1.0 | 2026-03-15</span>
+      </div>
       <nav>
         <ul>
-          <li><a href="/admin">儀表板</a></li>
-          <li><a href="/admin/bookings" class="active">預約管理</a></li>
-          <li><a href="/admin/noshows">爽約管理</a></li>
-          <li><a href="/admin/locations">場所管理</a></li>
-          <li><a href="/admin/therapists">技師管理</a></li>
-          <li><a href="/admin/customers">客戶管理</a></li>
+          <li><a href="/admin"><span class="nav-icon">&#9632;</span> 儀表板</a></li>
+          <li><a href="/admin/bookings" class="active"><span class="nav-icon">&#128197;</span> 預約管理</a></li>
+          <li><a href="/admin/noshows"><span class="nav-icon">&#9888;</span> 爽約管理</a></li>
+          <li><a href="/admin/locations"><span class="nav-icon">&#127968;</span> 場所管理</a></li>
+          <li><a href="/admin/therapists"><span class="nav-icon">&#128100;</span> 技師管理</a></li>
+          <li><a href="/admin/customers"><span class="nav-icon">&#128101;</span> 客戶管理</a></li>
         </ul>
       </nav>
     </div>
 
     <div class="main-content">
-      <div class="header">
+      <div class="page-header">
         <h1>預約管理</h1>
       </div>
 
@@ -285,23 +37,44 @@
         <input type="date" id="filter-date" placeholder="篩選日期">
         <select id="filter-status">
           <option value="">所有狀態</option>
-          <option value="pending">待處理</option>
-          <option value="confirmed">已確認</option>
-          <option value="rejected">已拒絕</option>
-          <option value="completed">已完成</option>
-          <option value="cancelled">已取消</option>
+          <option value="waiting_therapist">等待技師回覆</option>
+          <option value="waiting_service">等待進入服務</option>
+          <option value="completed">已完成服務</option>
+          <option value="customer_no_show">客戶爽約</option>
+          <option value="therapist_cancelled">技師取消</option>
+          <option value="therapist_no_show">技師爽約</option>
         </select>
         <button class="btn" onclick="loadBookings()">搜索</button>
       </div>
 
       <div class="content-section">
         <div id="message"></div>
-        <div id="bookings-container" class="loading">加載中...</div>
+        <div class="table-wrapper">
+          <div id="bookings-container" class="loading">加載中...</div>
+        </div>
       </div>
     </div>
   </div>
 
   <script>
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('open');
+      document.getElementById('sidebarOverlay').classList.toggle('show');
+    }
+
+    const STATUS_MAP = {
+      'waiting_therapist': '等待技師回覆',
+      'waiting_service': '等待進入服務',
+      'completed': '已完成服務',
+      'customer_no_show': '客戶爽約',
+      'therapist_cancelled': '技師取消',
+      'therapist_no_show': '技師爽約',
+      'pending': '待處理',
+      'confirmed': '已確認',
+      'rejected': '已拒絕',
+      'cancelled': '已取消',
+    };
+
     async function loadBookings() {
       try {
         const date = document.getElementById('filter-date').value;
@@ -316,89 +89,50 @@
         const response = await fetch(url);
         const bookings = await response.json();
 
-        let html = '<table><thead><tr><th>預約ID</th><th>客戶</th><th>技師</th><th>場所</th><th>日期</th><th>時段</th><th>狀態</th><th>操作</th></tr></thead><tbody>';
+        if (!bookings.length) {
+          document.getElementById('bookings-container').innerHTML = '<div style="text-align:center; color:#9ca3af; padding:24px;">暫無預約記錄</div>';
+          return;
+        }
 
-        for (const booking of bookings) {
-          const statusClass = `status-${booking.status}`;
-          const statusLabel = {
-            pending: '待處理',
-            confirmed: '已確認',
-            rejected: '已拒絕',
-            completed: '已完成',
-            cancelled: '已取消',
-          }[booking.status] || booking.status;
+        let html = '<table><thead><tr>';
+        html += '<th>預約ID</th><th>客戶</th><th>技師</th><th>場所</th><th>日期</th><th>時段</th><th>狀態</th>';
+        html += '</tr></thead><tbody>';
 
-          html += `
-            <tr>
-              <td>${booking.id}</td>
-              <td>${booking.customer_name || '未知'}</td>
-              <td>${booking.therapist_name || '未知'}</td>
-              <td>${booking.location_name || '未知'}</td>
-              <td>${booking.booking_date}</td>
-              <td>${booking.time_slot} ${booking.time_option}</td>
-              <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
-              <td>
-                <div class="action-buttons">
-                  <button class="btn" onclick="viewBooking(${booking.id})">查看</button>
-                  ${booking.status === 'completed' ? `<button class="btn btn-danger" onclick="markNoShow(${booking.id})">標記爽約</button>` : ''}
-                </div>
-              </td>
-            </tr>
-          `;
+        for (const b of bookings) {
+          const displayId = b.booking_code || b.id;
+          const statusLabel = STATUS_MAP[b.status] || b.status;
+          const statusClass = 'status-' + b.status;
+          const customerDisplay = b.customer_name || ('TG:' + (b.telegram_id || '未知'));
+          const therapistDisplay = (b.therapist_name || '未知') + (b.display_number ? ' #' + b.display_number : '');
+          const locationDisplay = b.location_name ? ((b.location_code || '') + ' ' + b.location_name) : '未知';
+          const timeDisplay = (b.time_slot || '') + ' ' + (b.time_option || '');
+
+          html += '<tr>';
+          html += '<td style="font-family:monospace; font-size:12px;">' + displayId + '</td>';
+          html += '<td>' + customerDisplay + '</td>';
+          html += '<td>' + therapistDisplay + '</td>';
+          html += '<td>' + locationDisplay + '</td>';
+          html += '<td>' + (b.booking_date || '') + '</td>';
+          html += '<td>' + timeDisplay + '</td>';
+          html += '<td><span class="status-badge ' + statusClass + '">' + statusLabel + '</span></td>';
+          html += '</tr>';
         }
 
         html += '</tbody></table>';
         document.getElementById('bookings-container').innerHTML = html;
       } catch (error) {
         console.error('加載預約失敗:', error);
-        document.getElementById('bookings-container').innerHTML = '<div class="error">加載失敗</div>';
-      }
-    }
-
-    async function viewBooking(bookingId) {
-      try {
-        const response = await fetch(`/api/bookings/${bookingId}`);
-        const booking = await response.json();
-        alert(`預約詳情:\n\n客戶: ${booking.customer_name}\n技師: ${booking.therapist_name}\n日期: ${booking.booking_date}\n時段: ${booking.time_slot} ${booking.time_option}\n狀態: ${booking.status}`);
-      } catch (error) {
-        alert('加載失敗');
-      }
-    }
-
-    async function markNoShow(bookingId) {
-      const reason = prompt('請輸入爽約原因 (可選):');
-      if (reason === null) return;
-
-      try {
-        const response = await fetch(`/api/bookings/${bookingId}/noshow`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reason }),
-        });
-
-        const result = await response.json();
-        if (result.success) {
-          showMessage('爽約已記錄', 'success');
-          loadBookings();
-        } else {
-          showMessage('標記失敗', 'error');
-        }
-      } catch (error) {
-        showMessage('標記失敗: ' + error.message, 'error');
+        document.getElementById('bookings-container').innerHTML = '<div class="msg-error">加載失敗</div>';
       }
     }
 
     function showMessage(message, type) {
-      const messageDiv = document.getElementById('message');
-      messageDiv.className = type;
-      messageDiv.textContent = message;
-      setTimeout(() => {
-        messageDiv.textContent = '';
-        messageDiv.className = '';
-      }, 3000);
+      const div = document.getElementById('message');
+      div.className = type === 'success' ? 'msg-success' : 'msg-error';
+      div.textContent = message;
+      setTimeout(() => { div.textContent = ''; div.className = ''; }, 3000);
     }
 
-    // 初始化
     loadBookings();
   </script>
 </body>

@@ -8,16 +8,40 @@ const logger = require('../utils/logger');
 // 獲取所有預約
 router.get('/', async (req, res) => {
   try {
-    const { status, date } = req.query;
+    const { status, date, bookingDate } = req.query;
     const filters = {};
 
     if (status) filters.status = status;
-    if (date) filters.bookingDate = date;
+    if (date || bookingDate) filters.bookingDate = date || bookingDate;
 
     const bookings = await Booking.getAll(filters);
     res.json(bookings);
   } catch (error) {
     logger.error('獲取預約列表失敗', { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 獲取技師排名
+router.get('/ranking', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const ranking = await Booking.getTherapistRanking(days);
+    res.json(ranking);
+  } catch (error) {
+    logger.error('獲取技師排名失敗', { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 獲取預約統計
+router.get('/stats/daily', async (req, res) => {
+  try {
+    const { date } = req.query;
+    const stats = await BookingService.getBookingStats(date);
+    res.json(stats);
+  } catch (error) {
+    logger.error('獲取統計失敗', { error: error.message });
     res.status(500).json({ error: error.message });
   }
 });
@@ -92,18 +116,6 @@ router.post('/:id/noshow', async (req, res) => {
     res.json({ success: true, message: '爽約已記錄', noShow });
   } catch (error) {
     logger.error('標記爽約失敗', { error: error.message });
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 獲取預約統計
-router.get('/stats/daily', async (req, res) => {
-  try {
-    const { date } = req.query;
-    const stats = await BookingService.getBookingStats(date);
-    res.json(stats);
-  } catch (error) {
-    logger.error('獲取統計失敗', { error: error.message });
     res.status(500).json({ error: error.message });
   }
 });

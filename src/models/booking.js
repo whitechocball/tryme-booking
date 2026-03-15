@@ -1,15 +1,48 @@
 const db = require('../utils/db');
 const logger = require('../utils/logger');
 
+// 新的狀態定義
+const BOOKING_STATUS = {
+  WAITING_THERAPIST: 'waiting_therapist',   // 等待技師回覆
+  WAITING_SERVICE: 'waiting_service',       // 等待進入服務
+  COMPLETED: 'completed',                   // 已完成服務
+  CUSTOMER_NO_SHOW: 'customer_no_show',     // 客戶爽約
+  THERAPIST_CANCELLED: 'therapist_cancelled', // 技師取消
+  THERAPIST_NO_SHOW: 'therapist_no_show',   // 技師爽約
+};
+
+const STATUS_LABELS = {
+  'waiting_therapist': '等待技師回覆',
+  'waiting_service': '等待進入服務',
+  'completed': '已完成服務',
+  'customer_no_show': '客戶爽約',
+  'therapist_cancelled': '技師取消',
+  'therapist_no_show': '技師爽約',
+};
+
+/**
+ * 生成預約編號：YYYYMMDD-HHmm
+ */
+function generateBookingCode() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const h = String(now.getHours()).padStart(2, '0');
+  const min = String(now.getMinutes()).padStart(2, '0');
+  return `${y}${m}${d}-${h}${min}`;
+}
+
 class Booking {
   static async create(customerId, therapistId, locationId, bookingDate, timeSlot, timeOption) {
     try {
+      const bookingCode = generateBookingCode();
       const result = await db.query(
-        `INSERT INTO bookings (customer_id, therapist_id, location_id, booking_date, time_slot, time_option, status)
-         VALUES ($1, $2, $3, $4, $5, $6, 'pending') RETURNING *`,
-        [customerId, therapistId, locationId, bookingDate, timeSlot, timeOption]
+        `INSERT INTO bookings (customer_id, therapist_id, location_id, booking_date, time_slot, time_option, status, booking_code)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        [customerId, therapistId, locationId, bookingDate, timeSlot, timeOption, BOOKING_STATUS.WAITING_THERAPIST, bookingCode]
       );
-      logger.info('新預約已創建', { customerId, therapistId, bookingDate });
+      logger.info('新預約已創建', { customerId, therapistId, bookingDate, bookingCode });
       return result.rows[0];
     } catch (error) {
       logger.error('創建預約失敗', { error: error.message, customerId, therapistId });
@@ -20,7 +53,10 @@ class Booking {
   static async getById(bookingId) {
     try {
       const result = await db.query(
-        `SELECT b.*, c.name as customer_name, c.telegram_id, t.name as therapist_name, t.wechat_id, l.name as location_name
+        `SELECT b.*, b.booking_code,
+                c.name as customer_name, c.telegram_id,
+                t.name as therapist_name, t.external_user_id, t.display_number,
+                l.name as location_name, l.code as location_code
          FROM bookings b
          LEFT JOIN customers c ON b.customer_id = c.id
          LEFT JOIN therapists t ON b.therapist_id = t.id
@@ -38,13 +74,16 @@ class Booking {
   static async getByCustomer(customerId) {
     try {
       const result = await db.query(
-        `SELECT b.*, c.name as customer_name, t.name as therapist_name, l.name as location_name
+        `SELECT b.*, b.booking_code,
+                c.name as customer_name, c.telegram_id,
+                t.name as therapist_name, t.display_number,
+                l.name as location_name, l.code as location_code
          FROM bookings b
          LEFT JOIN customers c ON b.customer_id = c.id
          LEFT JOIN therapists t ON b.therapist_id = t.id
          LEFT JOIN locations l ON b.location_id = l.id
          WHERE b.customer_id = $1
-         ORDER BY b.booking_date DESC`,
+         ORDER BY b.created_at DESC`,
         [customerId]
       );
       return result.rows;
@@ -57,13 +96,16 @@ class Booking {
   static async getByTherapist(therapistId) {
     try {
       const result = await db.query(
-        `SELECT b.*, c.name as customer_name, t.name as therapist_name, l.name as location_name
+        `SELECT b.*, b.booking_code,
+                c.name as customer_name, c.telegram_id,
+                t.name as therapist_name, t.display_number,
+                l.name as location_name, l.code as location_code
          FROM bookings b
          LEFT JOIN customers c ON b.customer_id = c.id
          LEFT JOIN therapists t ON b.therapist_id = t.id
          LEFT JOIN locations l ON b.location_id = l.id
          WHERE b.therapist_id = $1
-         ORDER BY b.booking_date DESC`,
+         ORDER BY b.created_at DESC`,
         [therapistId]
       );
       return result.rows;
@@ -75,7 +117,10 @@ class Booking {
 
   static async getAll(filters = {}) {
     try {
-      let query = `SELECT b.*, c.name as customer_name, c.telegram_id, t.name as therapist_name, t.wechat_id, l.name as location_name
+      let query = `SELECT b.*, b.booking_code,
+                          c.name as customer_name, c.telegram_id,
+                          t.name as therapist_name, t.external_user_id, t.display_number,
+                          l.name as location_name, l.code as location_code
                    FROM bookings b
                    LEFT JOIN customers c ON b.customer_id = c.id
                    LEFT JOIN therapists t ON b.therapist_id = t.id
@@ -101,7 +146,7 @@ class Booking {
         query += ' WHERE ' + conditions.join(' AND ');
       }
 
-      query += ' ORDER BY b.booking_date DESC';
+      query += ' ORDER BY b.created_at DESC';
 
       const result = await db.query(query, params);
       return result.rows;
@@ -131,7 +176,6 @@ class Booking {
         'UPDATE bookings SET therapist_response_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
         [bookingId]
       );
-      logger.info('技師回應已記錄', { bookingId });
       return result.rows[0];
     } catch (error) {
       logger.error('記錄技師回應失敗', { error: error.message, bookingId });
@@ -140,24 +184,22 @@ class Booking {
   }
 
   static async cancel(bookingId) {
-    try {
-      return await this.updateStatus(bookingId, 'cancelled');
-    } catch (error) {
-      logger.error('取消預約失敗', { error: error.message, bookingId });
-      throw error;
-    }
+    return await this.updateStatus(bookingId, BOOKING_STATUS.THERAPIST_CANCELLED);
   }
 
   static async getByDateRange(startDate, endDate) {
     try {
       const result = await db.query(
-        `SELECT b.*, c.name as customer_name, t.name as therapist_name, l.name as location_name
+        `SELECT b.*, b.booking_code,
+                c.name as customer_name, c.telegram_id,
+                t.name as therapist_name, t.display_number,
+                l.name as location_name, l.code as location_code
          FROM bookings b
          LEFT JOIN customers c ON b.customer_id = c.id
          LEFT JOIN therapists t ON b.therapist_id = t.id
          LEFT JOIN locations l ON b.location_id = l.id
          WHERE b.booking_date BETWEEN $1 AND $2
-         ORDER BY b.booking_date DESC`,
+         ORDER BY b.created_at DESC`,
         [startDate, endDate]
       );
       return result.rows;
@@ -166,6 +208,34 @@ class Booking {
       throw error;
     }
   }
+
+  /**
+   * 獲取技師預約排名（指定天數範圍）
+   */
+  static async getTherapistRanking(days = 30) {
+    try {
+      const result = await db.query(
+        `SELECT t.id, t.name as therapist_name, t.display_number,
+                l.name as location_name, l.code as location_code,
+                COUNT(b.id) as booking_count
+         FROM bookings b
+         JOIN therapists t ON b.therapist_id = t.id
+         LEFT JOIN locations l ON t.location_id = l.id
+         WHERE b.created_at >= NOW() - INTERVAL '1 day' * $1
+           AND b.status NOT IN ('therapist_cancelled')
+         GROUP BY t.id, t.name, t.display_number, l.name, l.code
+         ORDER BY booking_count DESC`,
+        [days]
+      );
+      return result.rows;
+    } catch (error) {
+      logger.error('獲取技師排名失敗', { error: error.message });
+      throw error;
+    }
+  }
 }
+
+Booking.STATUS = BOOKING_STATUS;
+Booking.STATUS_LABELS = STATUS_LABELS;
 
 module.exports = Booking;

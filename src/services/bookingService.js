@@ -12,7 +12,7 @@ class BookingService {
     try {
       // 檢查時間是否已被預約
       const existingBooking = await Booking.getAll({
-        status: 'confirmed',
+        status: Booking.STATUS.WAITING_SERVICE,
         bookingDate,
       });
 
@@ -51,6 +51,7 @@ class BookingService {
       if (therapist.external_user_id) {
         const notificationData = {
           bookingId: booking.id,
+          bookingCode: booking.booking_code,
           customerName: customer.name || `用戶 ${customerId}`,
           locationName: bookingDetails.location_name,
           bookingDate: bookingDate,
@@ -64,7 +65,6 @@ class BookingService {
           await wechatUtil.sendBookingNotification(therapist.external_user_id, notificationData);
         } catch (error) {
           logger.error('發送企業微信通知失敗', { error: error.message, therapistId });
-          // 不中斷流程，繼續
         }
       }
 
@@ -79,19 +79,12 @@ class BookingService {
   static async confirmBooking(bookingId, therapistId) {
     try {
       const booking = await Booking.getById(bookingId);
-      if (!booking) {
-        throw new Error('預約不存在');
-      }
+      if (!booking) throw new Error('預約不存在');
+      if (booking.therapist_id !== therapistId) throw new Error('無權確認此預約');
 
-      if (booking.therapist_id !== therapistId) {
-        throw new Error('無權確認此預約');
-      }
-
-      // 更新預約狀態
-      await Booking.updateStatus(bookingId, 'confirmed');
+      await Booking.updateStatus(bookingId, Booking.STATUS.WAITING_SERVICE);
       await Booking.markTherapistResponse(bookingId);
 
-      // 發送 Telegram 確認消息給客戶
       try {
         await telegramUtil.sendBookingConfirmation(booking.telegram_id, {
           locationName: booking.location_name,
@@ -100,6 +93,7 @@ class BookingService {
           timeSlot: this.getTimeSlotLabel(booking.time_slot),
           timeOption: booking.time_option,
           bookingId: booking.id,
+          bookingCode: booking.booking_code,
         });
       } catch (error) {
         logger.error('發送 Telegram 確認消息失敗', { error: error.message });
@@ -115,19 +109,12 @@ class BookingService {
   static async rejectBooking(bookingId, therapistId) {
     try {
       const booking = await Booking.getById(bookingId);
-      if (!booking) {
-        throw new Error('預約不存在');
-      }
+      if (!booking) throw new Error('預約不存在');
+      if (booking.therapist_id !== therapistId) throw new Error('無權拒絕此預約');
 
-      if (booking.therapist_id !== therapistId) {
-        throw new Error('無權拒絕此預約');
-      }
-
-      // 更新預約狀態
-      await Booking.updateStatus(bookingId, 'rejected');
+      await Booking.updateStatus(bookingId, Booking.STATUS.THERAPIST_CANCELLED);
       await Booking.markTherapistResponse(bookingId);
 
-      // 發送 Telegram 拒絕消息給客戶
       try {
         await telegramUtil.sendBookingRejection(booking.telegram_id, {
           locationName: booking.location_name,
@@ -149,15 +136,9 @@ class BookingService {
   static async cancelBooking(bookingId, customerId) {
     try {
       const booking = await Booking.getById(bookingId);
-      if (!booking) {
-        throw new Error('預約不存在');
-      }
+      if (!booking) throw new Error('預約不存在');
+      if (booking.customer_id !== customerId) throw new Error('無權取消此預約');
 
-      if (booking.customer_id !== customerId) {
-        throw new Error('無權取消此預約');
-      }
-
-      // 檢查是否在預約前 1 小時內
       const bookingDateTime = new Date(`${booking.booking_date}T12:00:00`);
       const now = new Date();
       const hoursUntilBooking = (bookingDateTime - now) / (1000 * 60 * 60);
@@ -166,9 +147,7 @@ class BookingService {
         throw new Error('預約前 1 小時內無法取消');
       }
 
-      // 更新預約狀態
-      await Booking.updateStatus(bookingId, 'cancelled');
-
+      await Booking.updateStatus(bookingId, Booking.STATUS.THERAPIST_CANCELLED);
       logger.info('預約已取消', { bookingId, customerId });
     } catch (error) {
       logger.error('取消預約失敗', { error: error.message, bookingId });
@@ -179,22 +158,18 @@ class BookingService {
   static async markNoShow(bookingId, reason = null) {
     try {
       const booking = await Booking.getById(bookingId);
-      if (!booking) {
-        throw new Error('預約不存在');
-      }
+      if (!booking) throw new Error('預約不存在');
 
-      // 創建爽約記錄
       const noShow = await NoShow.create(
         bookingId,
         booking.customer_id,
         booking.therapist_id,
         booking.booking_date,
         reason,
-        'system'
+        'admin'
       );
 
-      // 更新預約狀態
-      await Booking.updateStatus(bookingId, 'completed');
+      await Booking.updateStatus(bookingId, Booking.STATUS.CUSTOMER_NO_SHOW);
 
       logger.info('爽約記錄已創建', { bookingId, customerId: booking.customer_id });
       return noShow;
@@ -220,22 +195,16 @@ class BookingService {
 
       const stats = {
         totalBookings: bookings.length,
-        confirmedBookings: bookings.filter(b => b.status === 'confirmed').length,
-        pendingBookings: bookings.filter(b => b.status === 'pending').length,
-        rejectedBookings: bookings.filter(b => b.status === 'rejected').length,
-        completedBookings: bookings.filter(b => b.status === 'completed').length,
-        byTherapist: {},
+        waitingTherapist: bookings.filter(b => b.status === Booking.STATUS.WAITING_THERAPIST).length,
+        waitingService: bookings.filter(b => b.status === Booking.STATUS.WAITING_SERVICE).length,
+        completed: bookings.filter(b => b.status === Booking.STATUS.COMPLETED).length,
+        customerNoShow: bookings.filter(b => b.status === Booking.STATUS.CUSTOMER_NO_SHOW).length,
+        therapistCancelled: bookings.filter(b => b.status === Booking.STATUS.THERAPIST_CANCELLED).length,
+        therapistNoShow: bookings.filter(b => b.status === Booking.STATUS.THERAPIST_NO_SHOW).length,
+        // 向後兼容
+        confirmedBookings: bookings.filter(b => b.status === Booking.STATUS.WAITING_SERVICE).length,
+        pendingBookings: bookings.filter(b => b.status === Booking.STATUS.WAITING_THERAPIST).length,
       };
-
-      // 按技師統計
-      for (const booking of bookings) {
-        if (!stats.byTherapist[booking.therapist_name]) {
-          stats.byTherapist[booking.therapist_name] = 0;
-        }
-        if (booking.status === 'confirmed' || booking.status === 'completed') {
-          stats.byTherapist[booking.therapist_name]++;
-        }
-      }
 
       return stats;
     } catch (error) {

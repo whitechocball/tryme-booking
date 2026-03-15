@@ -39,13 +39,20 @@ router.get('/:id', async (req, res) => {
 // 創建技師
 router.post('/', async (req, res) => {
   try {
-    const { name, locationId, wechatId, isVip } = req.body;
+    const { name, locationId, wechatId, externalUserId, isVip, displayNumber } = req.body;
 
     if (!name || !locationId) {
       return res.status(400).json({ error: '缺少必要欄位' });
     }
 
-    const therapist = await Therapist.create(name, locationId, wechatId, isVip || false);
+    const therapist = await Therapist.create(
+      name,
+      locationId,
+      externalUserId || null,
+      isVip || false,
+      wechatId || null,
+      displayNumber || null
+    );
     res.json({ success: true, message: '技師已創建', therapist });
   } catch (error) {
     logger.error('創建技師失敗', { error: error.message });
@@ -56,13 +63,15 @@ router.post('/', async (req, res) => {
 // 更新技師
 router.put('/:id', async (req, res) => {
   try {
-    const { name, locationId, wechatId, isVip, availableTimeSlots } = req.body;
+    const { name, locationId, wechatId, externalUserId, isVip, availableTimeSlots, displayNumber } = req.body;
     const updates = {};
 
     if (name) updates.name = name;
     if (locationId) updates.location_id = locationId;
-    if (wechatId) updates.wechat_id = wechatId;
+    if (wechatId !== undefined) updates.wechat_id = wechatId;
+    if (externalUserId !== undefined) updates.external_user_id = externalUserId;
     if (isVip !== undefined) updates.is_vip = isVip;
+    if (displayNumber !== undefined) updates.display_number = displayNumber;
     if (availableTimeSlots) updates.available_time_slots = JSON.stringify(availableTimeSlots);
 
     const therapist = await Therapist.update(req.params.id, updates);

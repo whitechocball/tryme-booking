@@ -2,11 +2,11 @@ const db = require('../utils/db');
 const logger = require('../utils/logger');
 
 class Therapist {
-  static async create(name, locationId, externalUserId = null, isVip = false, wechatId = null) {
+  static async create(name, locationId, externalUserId = null, isVip = false, wechatId = null, displayNumber = null) {
     try {
       const result = await db.query(
-        'INSERT INTO therapists (name, location_id, external_user_id, wechat_id, is_vip) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-        [name, locationId, externalUserId, wechatId, isVip]
+        'INSERT INTO therapists (name, location_id, external_user_id, wechat_id, is_vip, display_number) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+        [name, locationId, externalUserId, wechatId, isVip, displayNumber]
       );
       logger.info('新技師已創建', { name, locationId, isVip });
       return result.rows[0];
@@ -45,7 +45,7 @@ class Therapist {
   static async getAll() {
     try {
       const result = await db.query(
-        'SELECT t.*, l.name as location_name FROM therapists t LEFT JOIN locations l ON t.location_id = l.id ORDER BY t.created_at DESC'
+        'SELECT t.*, l.name as location_name, l.code as location_code FROM therapists t LEFT JOIN locations l ON t.location_id = l.id ORDER BY t.created_at DESC'
       );
       return result.rows;
     } catch (error) {
@@ -101,6 +101,19 @@ class Therapist {
       return parseInt(result.rows[0].count, 10);
     } catch (error) {
       logger.error('查詢預約次數失敗', { error: error.message, therapistId, customerId });
+      throw error;
+    }
+  }
+
+  static async getByExternalUserId(externalUserId) {
+    try {
+      const result = await db.query(
+        'SELECT * FROM therapists WHERE external_user_id = $1',
+        [externalUserId]
+      );
+      return result.rows[0] || null;
+    } catch (error) {
+      logger.error('查詢外部聯繫人技師失敗', { error: error.message, externalUserId });
       throw error;
     }
   }
