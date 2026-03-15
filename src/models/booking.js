@@ -52,7 +52,7 @@ class Booking {
   static async getById(bookingId) {
     try {
       const result = await db.query(
-        `SELECT b.*,
+        `SELECT b.id, b.customer_id, b.therapist_id, b.location_id, b.booking_date, b.time_slot, b.time_option, b.status, b.therapist_response_at, b.created_at, b.updated_at,
                 c.name as customer_name, c.telegram_id,
                 t.id as therapist_id, t.name as therapist_name,
                 l.name as location_name, l.code as location_code
@@ -73,7 +73,7 @@ class Booking {
   static async getByCustomer(customerId) {
     try {
       const result = await db.query(
-        `SELECT b.*,
+        `SELECT b.id, b.customer_id, b.therapist_id, b.location_id, b.booking_date, b.time_slot, b.time_option, b.status, b.therapist_response_at, b.created_at, b.updated_at,
                 c.name as customer_name, c.telegram_id,
                 t.id as therapist_id, t.name as therapist_name,
                 l.name as location_name, l.code as location_code
@@ -95,7 +95,7 @@ class Booking {
   static async getByTherapist(therapistId) {
     try {
       const result = await db.query(
-        `SELECT b.*,
+        `SELECT b.id, b.customer_id, b.therapist_id, b.location_id, b.booking_date, b.time_slot, b.time_option, b.status, b.therapist_response_at, b.created_at, b.updated_at,
                 c.name as customer_name, c.telegram_id,
                 t.id as therapist_id, t.name as therapist_name,
                 l.name as location_name, l.code as location_code
@@ -191,7 +191,7 @@ class Booking {
   static async getByDateRange(startDate, endDate) {
     try {
       const result = await db.query(
-        `SELECT b.*,
+        `SELECT b.id, b.customer_id, b.therapist_id, b.location_id, b.booking_date, b.time_slot, b.time_option, b.status, b.therapist_response_at, b.created_at, b.updated_at,
                 c.name as customer_name, c.telegram_id,
                 t.id as therapist_id, t.name as therapist_name,
                 l.name as location_name, l.code as location_code
