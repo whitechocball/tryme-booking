@@ -113,7 +113,7 @@ app.get('/api/ai-sessions', basicAuth, async (req, res) => {
               l.name as location_name, t.name as therapist_name, t.display_number
        FROM ai_booking_sessions s
        LEFT JOIN bookings b ON s.current_booking_id = b.id
-       LEFT JOIN customers c ON c.telegram_id = s.customer_telegram_id::text OR c.telegram_id = s.customer_telegram_id
+       LEFT JOIN customers c ON c.telegram_id = s.customer_telegram_id
        LEFT JOIN locations l ON b.location_id = l.id
        LEFT JOIN therapists t ON b.therapist_id = t.id
        ORDER BY s.created_at DESC
