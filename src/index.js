@@ -9,6 +9,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // 中間件
+// 注意：企業微信回調需要原始 XML body，所以需要在 json 解析之前處理
+app.use('/api/wechat/callback', (req, res, next) => {
+  // 讓 wechatCallbackRoute 自己處理 body 解析
+  next();
+});
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static(path.join(__dirname, '../public')));
@@ -48,8 +54,9 @@ app.get('/health', (req, res) => {
     database: 'connected',
     timestamp: new Date().toISOString(),
     uptime: Math.floor(uptime),
-    version: '1.0.0',
-    releaseDate: '2026-03-15'
+    version: '1.1.0',
+    releaseDate: '2026-03-15',
+    features: ['telegram-ai-booking', 'wechat-bridge']
   });
 });
 
@@ -85,6 +92,8 @@ const locationRoutes = require('./api/locationRoutes');
 const therapistRoutes = require('./api/therapistRoutes');
 const customerRoutes = require('./api/customerRoutes');
 const wechatWebhook = require('./api/wechatWebhook');
+const wechatCallbackRoute = require('./api/wechatCallbackRoute');
+const telegramWebhookRoute = require('./api/telegramWebhookRoute');
 
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/noshows', noshowRoutes);
@@ -92,7 +101,30 @@ app.use('/api/locations', locationRoutes);
 app.use('/api/therapists', therapistRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/wechat/webhook', wechatWebhook);
+app.use('/api/wechat/callback', wechatCallbackRoute);
+app.use('/api/telegram/webhook', telegramWebhookRoute);
 
+// AI 預約會話查詢端點
+app.get('/api/ai-sessions', basicAuth, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT s.*, c.name as customer_name, c.telegram_id,
+              b.booking_date, b.booking_time, b.status as booking_status,
+              l.name as location_name, t.name as therapist_name, t.display_number
+       FROM ai_booking_sessions s
+       LEFT JOIN bookings b ON s.current_booking_id = b.id
+       LEFT JOIN customers c ON c.telegram_id = s.customer_telegram_id::text OR c.telegram_id = s.customer_telegram_id
+       LEFT JOIN locations l ON b.location_id = l.id
+       LEFT JOIN therapists t ON b.therapist_id = t.id
+       ORDER BY s.created_at DESC
+       LIMIT 50`
+    );
+    res.json(result.rows);
+  } catch (error) {
+    logger.error('查詢 AI 會話失敗', { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // 診斷端點 - 檢查數據庫列
 app.get('/api/diag/columns', basicAuth, async (req, res) => {
@@ -101,7 +133,7 @@ app.get('/api/diag/columns', basicAuth, async (req, res) => {
       SELECT table_name, column_name, data_type 
       FROM information_schema.columns 
       WHERE table_schema = 'public' 
-      AND table_name IN ('bookings', 'therapists', 'locations', 'no_shows')
+      AND table_name IN ('bookings', 'therapists', 'locations', 'no_shows', 'ai_booking_sessions')
       ORDER BY table_name, ordinal_position
     `);
     res.json(result.rows);
@@ -124,10 +156,13 @@ app.post('/api/diag/fix-columns', basicAuth, async (req, res) => {
     'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS work_end_time VARCHAR(10)',
     'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS current_location_id INTEGER',
     'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS telegram_id VARCHAR(100)',
+    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS wechat_userid VARCHAR(255)',
     'ALTER TABLE no_shows ADD COLUMN IF NOT EXISTS therapist_notes TEXT',
     'ALTER TABLE locations ADD COLUMN IF NOT EXISTS description TEXT',
     'ALTER TABLE locations ADD COLUMN IF NOT EXISTS map_url TEXT',
-    'ALTER TABLE locations ADD COLUMN IF NOT EXISTS venue_code VARCHAR(50)'
+    'ALTER TABLE locations ADD COLUMN IF NOT EXISTS venue_code VARCHAR(50)',
+    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS ai_session_id INTEGER',
+    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_time VARCHAR(20)',
   ];
   
   for (const stmt of statements) {
@@ -191,8 +226,11 @@ async function runMigrations(maxRetries = 5) {
         'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS work_end_time VARCHAR(10)',
         'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS current_location_id INTEGER',
         'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS telegram_id VARCHAR(100)',
+        'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS wechat_userid VARCHAR(255)',
         // bookings 表
         'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_code VARCHAR(50)',
+        'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS ai_session_id INTEGER',
+        'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_time VARCHAR(20)',
         // no_shows 表
         'ALTER TABLE no_shows ADD COLUMN IF NOT EXISTS therapist_notes TEXT',
         'ALTER TABLE no_shows ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP',
@@ -269,6 +307,16 @@ async function startServer() {
     const server = app.listen(PORT, () => {
       console.log(`✅ 伺服器運行在 http://localhost:${PORT}`);
     });
+
+    // 啟動 Telegram AI 預約 Bot（polling 模式）
+    try {
+      const { initAIBookingBot } = require('./bot/aiBookingBot');
+      initAIBookingBot();
+      console.log('🤖 Telegram AI 預約 Bot 初始化中...');
+    } catch (botError) {
+      console.error('❌ Telegram Bot 初始化失敗:', botError.message);
+      logger.error('Telegram Bot 初始化失敗', { error: botError.message });
+    }
 
     // 優雅關閉
     process.on('SIGINT', () => {

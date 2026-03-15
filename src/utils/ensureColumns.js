@@ -18,6 +18,11 @@ async function ensureColumns() {
     'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS work_end_time TIME',
     'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS current_location_id INTEGER',
     'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS telegram_id VARCHAR(100)',
+    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS wechat_userid VARCHAR(255)',
+    
+    // bookings 表 - AI 預約相關
+    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS ai_session_id INTEGER',
+    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_time VARCHAR(20)',
     
     // no_shows 表
     'ALTER TABLE no_shows ADD COLUMN IF NOT EXISTS therapist_notes TEXT',
