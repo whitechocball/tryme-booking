@@ -120,13 +120,20 @@ async function processWechatMessage(xmlBody) {
  * 從 XML 中提取字段值
  */
 function extractXmlField(xml, fieldName) {
-  // 嘗試 CDATA 格式
-  const cdataMatch = xml.match(new RegExp(`<${fieldName}><!\[CDATA\[(.*?)\]\]><\/${fieldName}>`));
+  // 嘗試 CDATA 格式 - 使用字符串拼接避免正則轉義問題
+  const cdataRegex = new RegExp('<' + fieldName + '><!\\[CDATA\\[([\\s\\S]*?)\\]\\]></' + fieldName + '>');
+  const cdataMatch = xml.match(cdataRegex);
   if (cdataMatch) return cdataMatch[1];
 
+  // 嘗試更寬鬆的 CDATA 匹配
+  const cdataRegex2 = new RegExp('<' + fieldName + '>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</' + fieldName + '>');
+  const cdataMatch2 = xml.match(cdataRegex2);
+  if (cdataMatch2) return cdataMatch2[1];
+
   // 嘗試普通格式
-  const normalMatch = xml.match(new RegExp(`<${fieldName}>(.*?)<\/${fieldName}>`));
-  if (normalMatch) return normalMatch[1];
+  const normalRegex = new RegExp('<' + fieldName + '>([^<]*)</' + fieldName + '>');
+  const normalMatch = xml.match(normalRegex);
+  if (normalMatch) return normalMatch[1].trim();
 
   return null;
 }
