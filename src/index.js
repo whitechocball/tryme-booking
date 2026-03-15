@@ -9,8 +9,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // 中間件
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static(path.join(__dirname, '../public')));
 app.use(express.static(path.join(__dirname, '../views')));
 
@@ -123,6 +123,7 @@ app.post('/api/diag/fix-columns', basicAuth, async (req, res) => {
     'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS work_start_time VARCHAR(10)',
     'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS work_end_time VARCHAR(10)',
     'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS current_location_id INTEGER',
+    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS telegram_id VARCHAR(100)',
     'ALTER TABLE no_shows ADD COLUMN IF NOT EXISTS therapist_notes TEXT',
     'ALTER TABLE locations ADD COLUMN IF NOT EXISTS description TEXT',
     'ALTER TABLE locations ADD COLUMN IF NOT EXISTS map_url TEXT',
@@ -189,6 +190,7 @@ async function runMigrations(maxRetries = 5) {
         'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS work_start_time VARCHAR(10)',
         'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS work_end_time VARCHAR(10)',
         'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS current_location_id INTEGER',
+        'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS telegram_id VARCHAR(100)',
         // bookings 表
         'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_code VARCHAR(50)',
         // no_shows 表

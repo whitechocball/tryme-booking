@@ -98,7 +98,11 @@ router.get('/therapist/:therapistId', async (req, res) => {
 // 获取客户爽约排名
 router.get('/ranking/customer', async (req, res) => {
   try {
-    const ranking = await NoShow.getCustomerNoShowRanking();
+    const { startDate, endDate } = req.query;
+    const filters = {};
+    if (startDate) filters.startDate = startDate;
+    if (endDate) filters.endDate = endDate;
+    const ranking = await NoShow.getCustomerNoShowRanking(filters);
     res.json(ranking);
   } catch (error) {
     logger.error('获取客户爽约排名失败', { error: error.message });
@@ -109,7 +113,11 @@ router.get('/ranking/customer', async (req, res) => {
 // 获取技师爽约详细记录
 router.get('/details/therapist', async (req, res) => {
   try {
-    const details = await NoShow.getTherapistNoShowDetails();
+    const { startDate, endDate } = req.query;
+    const filters = {};
+    if (startDate) filters.startDate = startDate;
+    if (endDate) filters.endDate = endDate;
+    const details = await NoShow.getTherapistNoShowDetails(filters);
     res.json(details);
   } catch (error) {
     logger.error('获取技师爽约详情失败', { error: error.message });

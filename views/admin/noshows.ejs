@@ -151,6 +151,12 @@
       <div id="customer" class="tab-content active">
         <div class="content-section">
           <h2>客戶爽約排名</h2>
+          <div class="filters" style="margin-bottom: 20px;">
+            <input type="date" id="customer-start-date">
+            <span style="color:#6b7280;">至</span>
+            <input type="date" id="customer-end-date">
+            <button class="btn" onclick="loadCustomerRanking()">搜索</button>
+          </div>
           <div id="customer-ranking-container" class="ranking-container loading">加載中...</div>
           
           <h2 style="margin-top: 40px;">備註</h2>
@@ -208,7 +214,16 @@
 
     async function loadCustomerRanking() {
       try {
-        const response = await fetch('/api/noshows/ranking/customer');
+        const startDate = document.getElementById('customer-start-date')?.value;
+        const endDate = document.getElementById('customer-end-date')?.value;
+
+        let url = '/api/noshows/ranking/customer';
+        const params = new URLSearchParams();
+        if (startDate) params.append('startDate', startDate);
+        if (endDate) params.append('endDate', endDate);
+        if (params.toString()) url += '?' + params.toString();
+
+        const response = await fetch(url);
         const ranking = await response.json();
 
         if (!ranking || ranking.length === 0) {

@@ -17,6 +17,7 @@ async function ensureColumns() {
     'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS work_start_time TIME',
     'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS work_end_time TIME',
     'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS current_location_id INTEGER',
+    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS telegram_id VARCHAR(100)',
     
     // no_shows 表
     'ALTER TABLE no_shows ADD COLUMN IF NOT EXISTS therapist_notes TEXT',

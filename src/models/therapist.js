@@ -2,11 +2,11 @@ const db = require('../utils/db');
 const logger = require('../utils/logger');
 
 class Therapist {
-  static async create(name, currentLocationId, isVip = false, wechatIdPrimary = null, wechatIdSecondary = null, phoneNumber = null, displayNumber = null, profilePicUrl = null, workStartTime = null, workEndTime = null) {
+  static async create(name, currentLocationId, isVip = false, wechatIdPrimary = null, wechatIdSecondary = null, phoneNumber = null, displayNumber = null, profilePicUrl = null, workStartTime = null, workEndTime = null, telegramId = null) {
     try {
       const result = await db.query(
-        'INSERT INTO therapists (name, current_location_id, is_vip, wechat_id_primary, wechat_id_secondary, phone_number, display_number, profile_pic_url, work_start_time, work_end_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
-        [name, currentLocationId, isVip, wechatIdPrimary, wechatIdSecondary, phoneNumber, displayNumber, profilePicUrl, workStartTime, workEndTime]
+        'INSERT INTO therapists (name, location_id, current_location_id, is_vip, wechat_id_primary, wechat_id_secondary, phone_number, display_number, profile_pic_url, work_start_time, work_end_time, telegram_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *',
+        [name, currentLocationId, currentLocationId, isVip, wechatIdPrimary, wechatIdSecondary, phoneNumber, displayNumber, profilePicUrl, workStartTime, workEndTime, telegramId]
       );
       logger.info('新技師已創建', { name, currentLocationId, isVip });
       return result.rows[0];
@@ -56,6 +56,11 @@ class Therapist {
 
   static async update(therapistId, updates) {
     try {
+      // 同步 location_id 和 current_location_id
+      if (updates.current_location_id && !updates.location_id) {
+        updates.location_id = updates.current_location_id;
+      }
+
       const fields = [];
       const values = [];
       let paramCount = 1;

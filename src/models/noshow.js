@@ -172,8 +172,28 @@ class NoShow {
     }
   }
 
-  static async getCustomerNoShowRanking() {
+  static async getCustomerNoShowRanking(filters = {}) {
     try {
+      let whereClause = '';
+      const conditions = [];
+      const params = [];
+      let paramCount = 1;
+
+      if (filters.startDate) {
+        conditions.push(`ns.no_show_date >= $${paramCount}`);
+        params.push(filters.startDate);
+        paramCount++;
+      }
+      if (filters.endDate) {
+        conditions.push(`ns.no_show_date <= $${paramCount}`);
+        params.push(filters.endDate);
+        paramCount++;
+      }
+
+      if (conditions.length > 0) {
+        whereClause = 'WHERE ' + conditions.join(' AND ');
+      }
+
       const result = await db.query(
         `SELECT c.id, c.name as customer_name, c.telegram_id,
                 COUNT(ns.id) as no_show_count,
@@ -182,8 +202,10 @@ class NoShow {
          JOIN customers c ON ns.customer_id = c.id
          LEFT JOIN therapists t ON ns.therapist_id = t.id
          LEFT JOIN locations l ON t.location_id = l.id
+         ${whereClause}
          GROUP BY c.id, c.name, c.telegram_id
-         ORDER BY no_show_count DESC`
+         ORDER BY no_show_count DESC`,
+        params
       );
       return result.rows;
     } catch (error) {
@@ -192,8 +214,28 @@ class NoShow {
     }
   }
 
-  static async getTherapistNoShowDetails() {
+  static async getTherapistNoShowDetails(filters = {}) {
     try {
+      const conditions = [];
+      const params = [];
+      let paramCount = 1;
+
+      if (filters.startDate) {
+        conditions.push(`ns.no_show_date >= $${paramCount}`);
+        params.push(filters.startDate);
+        paramCount++;
+      }
+      if (filters.endDate) {
+        conditions.push(`ns.no_show_date <= $${paramCount}`);
+        params.push(filters.endDate);
+        paramCount++;
+      }
+
+      let whereClause = '';
+      if (conditions.length > 0) {
+        whereClause = 'WHERE ' + conditions.join(' AND ');
+      }
+
       const result = await db.query(
         `SELECT ns.*, c.name as customer_name, c.telegram_id,
                 t.name as therapist_name,
@@ -202,7 +244,9 @@ class NoShow {
          JOIN therapists t ON ns.therapist_id = t.id
          LEFT JOIN customers c ON ns.customer_id = c.id
          LEFT JOIN locations l ON t.location_id = l.id
-         ORDER BY ns.no_show_date DESC`
+         ${whereClause}
+         ORDER BY ns.no_show_date DESC`,
+        params
       );
       return result.rows;
     } catch (error) {

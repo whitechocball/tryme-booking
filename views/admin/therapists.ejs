@@ -94,7 +94,7 @@
       </div>
 
       <div class="content-section" style="margin-bottom:24px;">
-        <h2>新增技師</h2>
+        <h2 id="form-title">新增技師</h2>
         <div id="message"></div>
         <form onsubmit="createTherapist(event)">
           <div class="form-group">
@@ -124,6 +124,15 @@
             <input type="tel" id="phone-number" placeholder="例如: 13800138000">
           </div>
           <div class="form-group">
+            <label>Telegram ID</label>
+            <input type="text" id="telegram-id" placeholder="例如: @username">
+          </div>
+          <div class="form-group">
+            <label>技師照片</label>
+            <input type="file" id="profile-pic" accept="image/*" onchange="previewImage(event)">
+            <div id="pic-preview" style="margin-top:8px;"></div>
+          </div>
+          <div class="form-group">
             <label>上班時間</label>
             <input type="time" id="work-start-time">
           </div>
@@ -135,7 +144,8 @@
             <input type="checkbox" id="is-vip">
             <label for="is-vip" style="margin:0; font-weight:normal;">VIP 技師</label>
           </div>
-          <button type="submit" class="btn">新增</button>
+          <button type="submit" class="btn" id="submit-btn">新增</button>
+          <button type="button" class="btn" id="cancel-btn" style="display:none;background:#6b7280;margin-left:8px;" onclick="cancelEdit()">取消編輯</button>
         </form>
       </div>
 
@@ -182,6 +192,20 @@
       }
     }
 
+    let currentProfilePicBase64 = null;
+
+    function previewImage(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        currentProfilePicBase64 = e.target.result;
+        document.getElementById('pic-preview').innerHTML = 
+          `<img src="${e.target.result}" style="max-width:100px;max-height:100px;border-radius:8px;">`;
+      };
+      reader.readAsDataURL(file);
+    }
+
     function displayTherapists(therapists) {
       if (!therapists || therapists.length === 0) {
         document.getElementById('therapists-container').innerHTML = '<p>暫無技師記錄</p>';
@@ -189,9 +213,11 @@
       }
 
       let html = '<div class="table-wrapper"><table class="data-table"><thead><tr>' +
+        '<th>照片</th>' +
         '<th>名稱</th>' +
         '<th>號碼</th>' +
         '<th>現職場所</th>' +
+        '<th>Telegram</th>' +
         '<th>主要微信ID</th>' +
         '<th>次要微信ID</th>' +
         '<th>電話</th>' +
@@ -202,10 +228,15 @@
         '</tr></thead><tbody>';
 
       therapists.forEach(t => {
+        const picHtml = t.profile_pic_url 
+          ? `<img src="${t.profile_pic_url}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">` 
+          : '-';
         html += `<tr>
+          <td>${picHtml}</td>
           <td>${t.name || '-'}</td>
           <td>${t.display_number || '-'}</td>
           <td>${t.location_name || '-'}</td>
+          <td>${t.telegram_id || '-'}</td>
           <td>${t.wechat_id_primary || '-'}</td>
           <td>${t.wechat_id_secondary || '-'}</td>
           <td>${t.phone_number || '-'}</td>
@@ -233,27 +264,47 @@
         wechatIdPrimary: document.getElementById('wechat-id-primary').value || null,
         wechatIdSecondary: document.getElementById('wechat-id-secondary').value || null,
         phoneNumber: document.getElementById('phone-number').value || null,
+        telegramId: document.getElementById('telegram-id').value || null,
         workStartTime: document.getElementById('work-start-time').value || null,
         workEndTime: document.getElementById('work-end-time').value || null,
         isVip: document.getElementById('is-vip').checked
       };
+      if (currentProfilePicBase64) {
+        data.profilePicUrl = currentProfilePicBase64;
+      }
 
       try {
-        const response = await fetch('/api/therapists', {
-          method: 'POST',
+        let url = '/api/therapists';
+        let method = 'POST';
+        let successMsg = '技師已創建';
+
+        if (currentEditingTherapistId) {
+          url = `/api/therapists/${currentEditingTherapistId}`;
+          method = 'PUT';
+          successMsg = '技師已更新';
+        }
+
+        const response = await fetch(url, {
+          method: method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
         });
         const result = await response.json();
         if (response.ok) {
-          document.getElementById('message').innerHTML = '<p style="color:green;">✓ 技師已創建</p>';
+          document.getElementById('message').innerHTML = `<p style="color:green;">✓ ${successMsg}</p>`;
           document.querySelector('form').reset();
+          currentProfilePicBase64 = null;
+          document.getElementById('pic-preview').innerHTML = '';
+          currentEditingTherapistId = null;
+          document.getElementById('form-title').textContent = '新增技師';
+          document.getElementById('submit-btn').textContent = '新增';
+          document.getElementById('cancel-btn').style.display = 'none';
           loadTherapists();
         } else {
           document.getElementById('message').innerHTML = `<p style="color:red;">✗ ${result.error}</p>`;
         }
       } catch (error) {
-        document.getElementById('message').innerHTML = `<p style="color:red;">✗ 創建失敗: ${error.message}</p>`;
+        document.getElementById('message').innerHTML = `<p style="color:red;">✗ 操作失敗: ${error.message}</p>`;
       }
     }
 
@@ -265,11 +316,32 @@
       document.getElementById('wechat-id-primary').value = therapist.wechat_id_primary || '';
       document.getElementById('wechat-id-secondary').value = therapist.wechat_id_secondary || '';
       document.getElementById('phone-number').value = therapist.phone_number || '';
+      document.getElementById('telegram-id').value = therapist.telegram_id || '';
       document.getElementById('work-start-time').value = therapist.work_start_time || '';
       document.getElementById('work-end-time').value = therapist.work_end_time || '';
       document.getElementById('is-vip').checked = therapist.is_vip;
+      if (therapist.profile_pic_url) {
+        document.getElementById('pic-preview').innerHTML = 
+          `<img src="${therapist.profile_pic_url}" style="max-width:100px;max-height:100px;border-radius:8px;">`;
+      } else {
+        document.getElementById('pic-preview').innerHTML = '';
+      }
+      currentProfilePicBase64 = null;
       currentEditingTherapistId = id;
+      document.getElementById('form-title').textContent = '編輯技師';
+      document.getElementById('submit-btn').textContent = '更新';
+      document.getElementById('cancel-btn').style.display = 'inline-block';
       window.scrollTo(0, 0);
+    }
+
+    function cancelEdit() {
+      currentEditingTherapistId = null;
+      currentProfilePicBase64 = null;
+      document.querySelector('form').reset();
+      document.getElementById('pic-preview').innerHTML = '';
+      document.getElementById('form-title').textContent = '新增技師';
+      document.getElementById('submit-btn').textContent = '新增';
+      document.getElementById('cancel-btn').style.display = 'none';
     }
 
     async function deleteTherapist(id) {
