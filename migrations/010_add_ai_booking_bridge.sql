@@ -21,6 +21,9 @@ CREATE INDEX IF NOT EXISTS idx_ai_booking_sessions_booking_id ON ai_booking_sess
 -- 技師表新增 wechat_userid 欄位（企業微信用戶 ID，用於發送應用消息）
 ALTER TABLE therapists ADD COLUMN IF NOT EXISTS wechat_userid VARCHAR(255);
 
+-- 擴展 bookings.status 欄位長度以支持新狀態
+ALTER TABLE bookings ALTER COLUMN status TYPE VARCHAR(50);
+
 -- 預約表新增 ai_session_id 欄位（關聯 AI 會話）
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS ai_session_id INTEGER;
 
