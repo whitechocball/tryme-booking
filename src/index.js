@@ -114,19 +114,19 @@ app.get('/api/diag/columns', basicAuth, async (req, res) => {
 app.post('/api/diag/fix-columns', basicAuth, async (req, res) => {
   const results = [];
   const statements = [
-    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='bookings' AND column_name='booking_code') THEN ALTER TABLE bookings ADD COLUMN booking_code VARCHAR(50); END IF; END $",
-    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='display_number') THEN ALTER TABLE therapists ADD COLUMN display_number VARCHAR(50); END IF; END $",
-    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='wechat_id_primary') THEN ALTER TABLE therapists ADD COLUMN wechat_id_primary VARCHAR(100); END IF; END $",
-    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='wechat_id_secondary') THEN ALTER TABLE therapists ADD COLUMN wechat_id_secondary VARCHAR(100); END IF; END $",
-    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='phone_number') THEN ALTER TABLE therapists ADD COLUMN phone_number VARCHAR(20); END IF; END $",
-    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='profile_pic_url') THEN ALTER TABLE therapists ADD COLUMN profile_pic_url TEXT; END IF; END $",
-    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='work_start_time') THEN ALTER TABLE therapists ADD COLUMN work_start_time VARCHAR(10); END IF; END $",
-    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='work_end_time') THEN ALTER TABLE therapists ADD COLUMN work_end_time VARCHAR(10); END IF; END $",
-    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='current_location_id') THEN ALTER TABLE therapists ADD COLUMN current_location_id INTEGER; END IF; END $",
-    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='no_shows' AND column_name='therapist_notes') THEN ALTER TABLE no_shows ADD COLUMN therapist_notes TEXT; END IF; END $",
-    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='locations' AND column_name='description') THEN ALTER TABLE locations ADD COLUMN description TEXT; END IF; END $",
-    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='locations' AND column_name='map_url') THEN ALTER TABLE locations ADD COLUMN map_url TEXT; END IF; END $",
-    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='locations' AND column_name='venue_code') THEN ALTER TABLE locations ADD COLUMN venue_code VARCHAR(50); END IF; END $"
+    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_code VARCHAR(50)',
+    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS display_number VARCHAR(50)',
+    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS wechat_id_primary VARCHAR(100)',
+    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS wechat_id_secondary VARCHAR(100)',
+    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS phone_number VARCHAR(20)',
+    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS profile_pic_url TEXT',
+    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS work_start_time VARCHAR(10)',
+    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS work_end_time VARCHAR(10)',
+    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS current_location_id INTEGER',
+    'ALTER TABLE no_shows ADD COLUMN IF NOT EXISTS therapist_notes TEXT',
+    'ALTER TABLE locations ADD COLUMN IF NOT EXISTS description TEXT',
+    'ALTER TABLE locations ADD COLUMN IF NOT EXISTS map_url TEXT',
+    'ALTER TABLE locations ADD COLUMN IF NOT EXISTS venue_code VARCHAR(50)'
   ];
   
   for (const stmt of statements) {
@@ -167,8 +167,12 @@ async function runMigrations(maxRetries = 5) {
         const filePath = path.join(migrationsDir, file);
         const sql = fs.readFileSync(filePath, 'utf-8');
         console.log(`  執行遷移: ${file}`);
-        await db.query(sql);
-        console.log(`  ✓ ${file} 完成`);
+        try {
+          await db.query(sql);
+          console.log(`  ✓ ${file} 完成`);
+        } catch (fileError) {
+          console.log(`  ⚠ ${file} 部分失敗: ${fileError.message.substring(0, 80)}，繼續執行...`);
+        }
       }
 
       // 確保所有表有所有必需的列

@@ -90,12 +90,12 @@ CREATE TABLE IF NOT EXISTS time_options (
 );
 
 -- 索引
-CREATE INDEX idx_customers_telegram_id ON customers(telegram_id);
-CREATE INDEX idx_bookings_customer_id ON bookings(customer_id);
-CREATE INDEX idx_bookings_therapist_id ON bookings(therapist_id);
-CREATE INDEX idx_bookings_status ON bookings(status);
-CREATE INDEX idx_bookings_date ON bookings(booking_date);
-CREATE INDEX idx_no_shows_customer_id ON no_shows(customer_id);
-CREATE INDEX idx_no_shows_therapist_id ON no_shows(therapist_id);
-CREATE INDEX idx_no_shows_date ON no_shows(no_show_date);
-CREATE INDEX idx_therapists_location_id ON therapists(location_id);
+CREATE INDEX IF NOT EXISTS idx_customers_telegram_id ON customers(telegram_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_customer_id ON bookings(customer_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_therapist_id ON bookings(therapist_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
+CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(booking_date);
+CREATE INDEX IF NOT EXISTS idx_no_shows_customer_id ON no_shows(customer_id);
+CREATE INDEX IF NOT EXISTS idx_no_shows_therapist_id ON no_shows(therapist_id);
+CREATE INDEX IF NOT EXISTS idx_no_shows_date ON no_shows(no_show_date);
+CREATE INDEX IF NOT EXISTS idx_therapists_location_id ON therapists(location_id);
