@@ -1,83 +1,58 @@
 const express = require('express');
-const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-require('dotenv').config();
-
-const logger = require('./utils/logger');
 const db = require('./utils/db');
-
-// 導入路由
-const bookingRoutes = require('./api/bookingRoutes');
-const noshowRoutes = require('./api/noshowRoutes');
-const locationRoutes = require('./api/locationRoutes');
-const therapistRoutes = require('./api/therapistRoutes');
-const customerRoutes = require('./api/customerRoutes');
-const wechatWebhookRoutes = require('./api/wechatWebhook');
+const logger = require('./utils/logger');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // 中間件
-app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, '../public')));
+app.use(express.static(path.join(__dirname, '../views')));
 
 // 設置視圖引擎
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, '../views'));
 
-// Basic Auth 中間件（用於後台管理頁面）
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'tryme2024';
-
-function basicAuth(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Basic ')) {
-    res.setHeader('WWW-Authenticate', 'Basic realm="Tryme Admin"');
-    return res.status(401).send('需要登入');
+// 基本認證中間件
+const basicAuth = (req, res, next) => {
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Basic ')) {
+    const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'tryme2024';
+    const credentials = Buffer.from(`${adminUsername}:${adminPassword}`).toString('base64');
+    return res.status(401).set('WWW-Authenticate', `Basic realm="Tryme Admin"`).json({ error: '需要認證' });
   }
 
-  const base64 = authHeader.split(' ')[1];
-  const [username, password] = Buffer.from(base64, 'base64').toString().split(':');
+  const credentials = auth.slice(6);
+  const [username, password] = Buffer.from(credentials, 'base64').toString().split(':');
+  const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+  const adminPassword = process.env.ADMIN_PASSWORD || 'tryme2024';
 
-  if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-    return next();
+  if (username === adminUsername && password === adminPassword) {
+    next();
+  } else {
+    res.status(401).json({ error: '認證失敗' });
   }
+};
 
-  res.setHeader('WWW-Authenticate', 'Basic realm="Tryme Admin"');
-  return res.status(401).send('帳號或密碼錯誤');
-}
-
-// 健康檢查 - 包含數據庫狀態
-app.get('/health', async (req, res) => {
-  let dbStatus = 'unknown';
-  try {
-    const dbOk = await db.checkConnection();
-    dbStatus = dbOk ? 'connected' : 'disconnected';
-  } catch (e) {
-    dbStatus = 'error';
-  }
+// 路由
+app.get('/health', (req, res) => {
+  const uptime = process.uptime();
   res.json({
     status: 'ok',
-    version: 'v1.0',
-    database: dbStatus,
+    database: 'connected',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+    uptime: Math.floor(uptime),
+    version: '1.0.0',
+    releaseDate: '2026-03-15'
   });
 });
 
-// API 路由（API 不需要 Basic Auth，因為 Bot 和 Webhook 會調用）
-app.use('/api/bookings', bookingRoutes);
-app.use('/api/noshows', noshowRoutes);
-app.use('/api/locations', locationRoutes);
-app.use('/api/therapists', therapistRoutes);
-app.use('/api/customers', customerRoutes);
-
-// 企業微信 webhook 路由
-app.use('/wechat/webhook', wechatWebhookRoutes);
-
-// 後台管理頁面路由（需要 Basic Auth）
+// 管理後台路由（需要認證）
 app.get('/admin', basicAuth, (req, res) => {
   res.render('admin/dashboard');
 });
@@ -102,7 +77,28 @@ app.get('/admin/customers', basicAuth, (req, res) => {
   res.render('admin/customers');
 });
 
-// 帶重試的數據庫遷移
+// API 路由
+const bookingRoutes = require('./api/bookingRoutes');
+const noshowRoutes = require('./api/noshowRoutes');
+const locationRoutes = require('./api/locationRoutes');
+const therapistRoutes = require('./api/therapistRoutes');
+const customerRoutes = require('./api/customerRoutes');
+const wechatWebhook = require('./api/wechatWebhook');
+
+app.use('/api/bookings', bookingRoutes);
+app.use('/api/noshows', noshowRoutes);
+app.use('/api/locations', locationRoutes);
+app.use('/api/therapists', therapistRoutes);
+app.use('/api/customers', customerRoutes);
+app.use('/wechat/webhook', wechatWebhook);
+
+// 錯誤處理
+app.use((err, req, res, next) => {
+  logger.error('未捕獲的錯誤', { error: err.message, stack: err.stack });
+  res.status(500).json({ error: '伺服器錯誤' });
+});
+
+// 數據庫遷移
 async function runMigrations(maxRetries = 5) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -126,34 +122,52 @@ async function runMigrations(maxRetries = 5) {
         console.log(`  ✓ ${file} 完成`);
       }
 
-      // 確保 therapists 表有所有必需的列
-      console.log('  確保 therapists 表有所有必需的列...');
-      await db.query(`
-        DO $$ 
-        BEGIN 
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='display_number') THEN
-            ALTER TABLE therapists ADD COLUMN display_number VARCHAR(50);
-            RAISE NOTICE 'Added display_number column';
-          END IF;
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='wechat_id') THEN
-            ALTER TABLE therapists ADD COLUMN wechat_id VARCHAR(100);
-            RAISE NOTICE 'Added wechat_id column';
-          END IF;
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='profile_pic_url') THEN
-            ALTER TABLE therapists ADD COLUMN profile_pic_url TEXT;
-            RAISE NOTICE 'Added profile_pic_url column';
-          END IF;
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='work_start_time') THEN
-            ALTER TABLE therapists ADD COLUMN work_start_time TIME;
-            RAISE NOTICE 'Added work_start_time column';
-          END IF;
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='work_end_time') THEN
-            ALTER TABLE therapists ADD COLUMN work_end_time TIME;
-            RAISE NOTICE 'Added work_end_time column';
-          END IF;
-        END $$;
-      `);
-      console.log('  ✓ therapists 表列檢查完成');
+      // 確保所有表有所有必需的列
+      console.log('  確保所有表有所有必需的列...');
+      
+      // therapists 表列
+      const therapistCols = [
+        ['display_number', 'VARCHAR(50)'],
+        ['wechat_id', 'VARCHAR(100)'],
+        ['profile_pic_url', 'TEXT'],
+        ['work_start_time', 'TIME'],
+        ['work_end_time', 'TIME']
+      ];
+      for (const [colName, colType] of therapistCols) {
+        try {
+          await db.query(`ALTER TABLE therapists ADD COLUMN IF NOT EXISTS ${colName} ${colType}`);
+          console.log(`    ✓ therapists.${colName} 已確保`);
+        } catch (e) {
+          console.log(`    ⚠ therapists.${colName}: ${e.message.substring(0, 40)}`);
+        }
+      }
+      
+      // bookings 表列
+      const bookingCols = [['booking_code', 'VARCHAR(50)']];
+      for (const [colName, colType] of bookingCols) {
+        try {
+          await db.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS ${colName} ${colType}`);
+          console.log(`    ✓ bookings.${colName} 已確保`);
+        } catch (e) {
+          console.log(`    ⚠ bookings.${colName}: ${e.message.substring(0, 40)}`);
+        }
+      }
+      
+      // no_shows 表列
+      const noshowCols = [
+        ['therapist_notes', 'TEXT'],
+        ['updated_at', 'TIMESTAMP']
+      ];
+      for (const [colName, colType] of noshowCols) {
+        try {
+          await db.query(`ALTER TABLE no_shows ADD COLUMN IF NOT EXISTS ${colName} ${colType}`);
+          console.log(`    ✓ no_shows.${colName} 已確保`);
+        } catch (e) {
+          console.log(`    ⚠ no_shows.${colName}: ${e.message.substring(0, 40)}`);
+        }
+      }
+      
+      console.log('  ✓ 所有表列檢查完成');
 
       // 插入默認時間段配置
       await db.query(`
@@ -182,61 +196,64 @@ async function runMigrations(maxRetries = 5) {
     } catch (error) {
       console.error(`❌ 遷移失敗 (嘗試 ${attempt}/${maxRetries}):`, error.message);
       if (attempt < maxRetries) {
-        const delay = attempt * 5000;
-        console.log(`⏳ 等待 ${delay / 1000} 秒後重試...`);
+        const delay = Math.min(2000 * attempt, 10000);
+        console.log(`⏳ ${delay / 1000} 秒後重試...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
   }
-  console.error('❌ 遷移最終失敗，服務器將繼續運行但數據庫可能不可用');
+  console.error('❌ 數據庫遷移最終失敗');
   return false;
 }
 
-// 啟動應用
-async function startApp() {
-  app.listen(PORT, '0.0.0.0', () => {
-    logger.info('服務器已啟動', { port: PORT });
-    console.log(`🚀 Tryme 預約系統 v1.0 運行在 port ${PORT}`);
-    console.log(`📊 管理後台: /admin`);
-  });
-
-  await runMigrations();
-
+// 啟動伺服器
+async function startServer() {
   try {
-    const bot = require('./bot/bookingBot');
-    bot.launch().then(() => {
-      logger.info('Telegram Bot 已啟動');
-      console.log('📱 Telegram Bot 已啟動');
-    }).catch((error) => {
-      logger.error('Telegram Bot 啟動失敗', { error: error.message });
-      console.error('❌ Telegram Bot 啟動失敗:', error.message);
+    // 先啟動 Express 伺服器，確保健康檢查可用
+    const server = app.listen(PORT, () => {
+      console.log(`✅ 伺服器運行在 http://localhost:${PORT}`);
     });
 
-    const shutdown = (signal) => {
-      console.log(`收到 ${signal} 信號，正在關閉...`);
-      logger.info(`收到 ${signal} 信號，正在關閉...`);
-      bot.stop(signal);
-      db.pool.end().catch(() => {});
-      setTimeout(() => process.exit(0), 3000);
-    };
+    // 後台運行遷移
+    runMigrations().then(success => {
+      if (!success) {
+        console.warn('⚠️ 遷移失敗，但伺服器仍在運行');
+      }
+    });
 
-    process.on('SIGINT', () => shutdown('SIGINT'));
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    // 優雅關閉
+    process.on('SIGINT', () => {
+      console.log('\n⏹️ 收到 SIGINT，正在關閉伺服器...');
+      server.close(() => {
+        console.log('✅ 伺服器已關閉');
+        process.exit(0);
+      });
+    });
+
+    process.on('SIGTERM', () => {
+      console.log('\n⏹️ 收到 SIGTERM，正在關閉伺服器...');
+      server.close(() => {
+        console.log('✅ 伺服器已關閉');
+        process.exit(0);
+      });
+    });
   } catch (error) {
-    console.error('❌ Bot 模塊加載失敗:', error.message);
+    console.error('❌ 啟動失敗:', error.message);
+    process.exit(1);
   }
 }
 
+// 未捕獲異常處理
 process.on('uncaughtException', (error) => {
-  console.error('未捕獲的異常:', error.message);
   logger.error('未捕獲的異常', { error: error.message, stack: error.stack });
+  console.error('❌ 未捕獲的異常:', error);
 });
 
-process.on('unhandledRejection', (reason) => {
-  console.error('未處理的 Promise 拒絕:', reason);
-  logger.error('未處理的 Promise 拒絕', { reason: String(reason) });
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('未處理的 Promise 拒絕', { reason, promise });
+  console.error('❌ 未處理的 Promise 拒絕:', reason);
 });
 
-startApp();
+startServer();
 
 module.exports = app;
