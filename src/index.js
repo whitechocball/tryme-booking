@@ -201,16 +201,17 @@ async function runMigrations(maxRetries = 5) {
 // 啟動伺服器
 async function startServer() {
   try {
-    // 先啟動 Express 伺服器，確保健康檢查可用
+    // 先執行遷移，確保數據庫準備好
+    console.log('🔄 執行數據庫遷移...');
+    const migrationSuccess = await runMigrations();
+    
+    if (!migrationSuccess) {
+      console.warn('⚠️ 遷移失敗，但將繼續啟動伺服器');
+    }
+    
+    // 啟動 Express 伺服器
     const server = app.listen(PORT, () => {
       console.log(`✅ 伺服器運行在 http://localhost:${PORT}`);
-    });
-
-    // 後台運行遷移
-    runMigrations().then(success => {
-      if (!success) {
-        console.warn('⚠️ 遷移失敗，但伺服器仍在運行');
-      }
     });
 
     // 優雅關閉
