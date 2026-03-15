@@ -54,7 +54,8 @@ router.post('/', async (req, res) => {
       profilePicUrl,
       workStartTime,
       workEndTime,
-      telegramId
+      telegramId,
+      wechatUserid
     } = req.body;
 
     if (!name || !currentLocationId) {
@@ -72,7 +73,8 @@ router.post('/', async (req, res) => {
       profilePicUrl || null,
       workStartTime || null,
       workEndTime || null,
-      telegramId || null
+      telegramId || null,
+      wechatUserid || null
     );
     res.json({ success: true, message: '技師已創建', therapist });
   } catch (error) {
@@ -95,7 +97,8 @@ router.put('/:id', async (req, res) => {
       profilePicUrl,
       workStartTime,
       workEndTime,
-      telegramId
+      telegramId,
+      wechatUserid
     } = req.body;
     const updates = {};
 
@@ -110,6 +113,7 @@ router.put('/:id', async (req, res) => {
     if (workStartTime !== undefined) updates.work_start_time = workStartTime;
     if (workEndTime !== undefined) updates.work_end_time = workEndTime;
     if (telegramId !== undefined) updates.telegram_id = telegramId;
+    if (wechatUserid !== undefined) updates.wechat_userid = wechatUserid;
 
     const therapist = await Therapist.update(req.params.id, updates);
     res.json({ success: true, message: '技師已更新', therapist });

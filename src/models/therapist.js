@@ -2,11 +2,11 @@ const db = require('../utils/db');
 const logger = require('../utils/logger');
 
 class Therapist {
-  static async create(name, currentLocationId, isVip = false, wechatIdPrimary = null, wechatIdSecondary = null, phoneNumber = null, displayNumber = null, profilePicUrl = null, workStartTime = null, workEndTime = null, telegramId = null) {
+  static async create(name, currentLocationId, isVip = false, wechatIdPrimary = null, wechatIdSecondary = null, phoneNumber = null, displayNumber = null, profilePicUrl = null, workStartTime = null, workEndTime = null, telegramId = null, wechatUserid = null) {
     try {
       const result = await db.query(
-        'INSERT INTO therapists (name, location_id, current_location_id, is_vip, wechat_id_primary, wechat_id_secondary, phone_number, display_number, profile_pic_url, work_start_time, work_end_time, telegram_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *',
-        [name, currentLocationId, currentLocationId, isVip, wechatIdPrimary, wechatIdSecondary, phoneNumber, displayNumber, profilePicUrl, workStartTime, workEndTime, telegramId]
+        'INSERT INTO therapists (name, location_id, current_location_id, is_vip, wechat_id_primary, wechat_id_secondary, phone_number, display_number, profile_pic_url, work_start_time, work_end_time, telegram_id, wechat_userid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *',
+        [name, currentLocationId, currentLocationId, isVip, wechatIdPrimary, wechatIdSecondary, phoneNumber, displayNumber, profilePicUrl, workStartTime, workEndTime, telegramId, wechatUserid]
       );
       logger.info('新技師已創建', { name, currentLocationId, isVip });
       return result.rows[0];
@@ -71,11 +71,14 @@ class Therapist {
         paramCount++;
       }
 
-      fields.push(`updated_at = CURRENT_TIMESTAMP`);
+      // 移除 updated_at 避免重複
+      const updatedFields = fields.filter(f => !f.startsWith('updated_at'));
+      updatedFields.push(`updated_at = CURRENT_TIMESTAMP`);
+      
       values.push(therapistId);
 
       const result = await db.query(
-        `UPDATE therapists SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+        `UPDATE therapists SET ${updatedFields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
         values
       );
 
