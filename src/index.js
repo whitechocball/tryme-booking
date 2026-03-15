@@ -92,6 +92,54 @@ app.use('/api/therapists', therapistRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/wechat/webhook', wechatWebhook);
 
+
+// 診斷端點 - 檢查數據庫列
+app.get('/api/diag/columns', basicAuth, async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT table_name, column_name, data_type 
+      FROM information_schema.columns 
+      WHERE table_schema = 'public' 
+      AND table_name IN ('bookings', 'therapists', 'locations', 'no_shows')
+      ORDER BY table_name, ordinal_position
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 修復端點 - 手動添加缺失列
+app.post('/api/diag/fix-columns', basicAuth, async (req, res) => {
+  const results = [];
+  const statements = [
+    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='bookings' AND column_name='booking_code') THEN ALTER TABLE bookings ADD COLUMN booking_code VARCHAR(50); END IF; END $",
+    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='display_number') THEN ALTER TABLE therapists ADD COLUMN display_number VARCHAR(50); END IF; END $",
+    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='wechat_id_primary') THEN ALTER TABLE therapists ADD COLUMN wechat_id_primary VARCHAR(100); END IF; END $",
+    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='wechat_id_secondary') THEN ALTER TABLE therapists ADD COLUMN wechat_id_secondary VARCHAR(100); END IF; END $",
+    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='phone_number') THEN ALTER TABLE therapists ADD COLUMN phone_number VARCHAR(20); END IF; END $",
+    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='profile_pic_url') THEN ALTER TABLE therapists ADD COLUMN profile_pic_url TEXT; END IF; END $",
+    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='work_start_time') THEN ALTER TABLE therapists ADD COLUMN work_start_time VARCHAR(10); END IF; END $",
+    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='work_end_time') THEN ALTER TABLE therapists ADD COLUMN work_end_time VARCHAR(10); END IF; END $",
+    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='current_location_id') THEN ALTER TABLE therapists ADD COLUMN current_location_id INTEGER; END IF; END $",
+    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='no_shows' AND column_name='therapist_notes') THEN ALTER TABLE no_shows ADD COLUMN therapist_notes TEXT; END IF; END $",
+    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='locations' AND column_name='description') THEN ALTER TABLE locations ADD COLUMN description TEXT; END IF; END $",
+    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='locations' AND column_name='map_url') THEN ALTER TABLE locations ADD COLUMN map_url TEXT; END IF; END $",
+    "DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='locations' AND column_name='venue_code') THEN ALTER TABLE locations ADD COLUMN venue_code VARCHAR(50); END IF; END $"
+  ];
+  
+  for (const stmt of statements) {
+    try {
+      await db.query(stmt);
+      results.push({ sql: stmt.substring(0, 80), status: 'ok' });
+    } catch (e) {
+      results.push({ sql: stmt.substring(0, 80), status: 'error', error: e.message });
+    }
+  }
+  res.json({ results });
+});
+
+
 // 錯誤處理
 app.use((err, req, res, next) => {
   logger.error('未捕獲的錯誤', { error: err.message, stack: err.stack });
