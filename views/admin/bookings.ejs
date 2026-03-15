@@ -5,6 +5,58 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tryme 管理後台 - 預約管理</title>
   <link rel="stylesheet" href="/admin-styles.css">
+  <style>
+    .therapist-cell {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .therapist-info {
+      flex: 1;
+    }
+    .therapist-pic-link {
+      color: #3b82f6;
+      text-decoration: none;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .therapist-pic-link:hover {
+      text-decoration: underline;
+    }
+    .pic-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .pic-modal.show {
+      display: flex;
+    }
+    .pic-modal-content {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      max-width: 90%;
+      max-height: 90%;
+      overflow: auto;
+    }
+    .pic-modal img {
+      max-width: 100%;
+      max-height: 600px;
+    }
+    .pic-modal-close {
+      float: right;
+      cursor: pointer;
+      font-size: 24px;
+      color: #999;
+    }
+  </style>
 </head>
 <body>
   <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
@@ -56,6 +108,14 @@
     </div>
   </div>
 
+  <!-- 圖片查看模態框 -->
+  <div class="pic-modal" id="picModal">
+    <div class="pic-modal-content">
+      <span class="pic-modal-close" onclick="closePicModal()">&times;</span>
+      <img id="picImage" src="" alt="技師頭像">
+    </div>
+  </div>
+
   <script>
     function toggleSidebar() {
       document.getElementById('sidebar').classList.toggle('open');
@@ -74,6 +134,19 @@
       'rejected': '已拒絕',
       'cancelled': '已取消',
     };
+
+    function showPicModal(picUrl) {
+      if (!picUrl) {
+        alert('暫無圖片');
+        return;
+      }
+      document.getElementById('picImage').src = picUrl;
+      document.getElementById('picModal').classList.add('show');
+    }
+
+    function closePicModal() {
+      document.getElementById('picModal').classList.remove('show');
+    }
 
     async function loadBookings() {
       try {
@@ -95,7 +168,7 @@
         }
 
         let html = '<table><thead><tr>';
-        html += '<th>預約ID</th><th>客戶</th><th>技師</th><th>場所</th><th>日期</th><th>時段</th><th>狀態</th>';
+        html += '<th>預約ID</th><th>客戶</th><th>技師</th><th>工號</th><th>日期</th><th>客戶預約時段</th><th>工作時間</th><th>狀態</th>';
         html += '</tr></thead><tbody>';
 
         for (const b of bookings) {
@@ -103,17 +176,35 @@
           const statusLabel = STATUS_MAP[b.status] || b.status;
           const statusClass = 'status-' + b.status;
           const customerDisplay = b.customer_name || ('TG:' + (b.telegram_id || '未知'));
-          const therapistDisplay = (b.therapist_name || '未知') + (b.display_number ? ' #' + b.display_number : '');
-          const locationDisplay = b.location_name ? ((b.location_code || '') + ' ' + b.location_name) : '未知';
+          
+          // 技師欄位：顯示技師名稱、微信ID和圖片連結
+          let therapistDisplay = b.therapist_name || '未知';
+          if (b.wechat_id) {
+            therapistDisplay += '<br><small style="color:#6b7280;">微信: ' + b.wechat_id + '</small>';
+          }
+          if (b.profile_pic_url) {
+            therapistDisplay += ' <a href="#" class="therapist-pic-link" onclick="showPicModal(\'' + b.profile_pic_url.replace(/'/g, "\\'") + '\'); return false;">(pic)</a>';
+          }
+          
+          // 工號欄位
+          const workNumber = b.display_number || '-';
+          
+          // 工作時間
+          const workTime = (b.work_start_time && b.work_end_time) 
+            ? (b.work_start_time.substring(0, 5) + ' - ' + b.work_end_time.substring(0, 5))
+            : '-';
+          
+          // 客戶預約時段
           const timeDisplay = (b.time_slot || '') + ' ' + (b.time_option || '');
 
           html += '<tr>';
           html += '<td style="font-family:monospace; font-size:12px;">' + displayId + '</td>';
           html += '<td>' + customerDisplay + '</td>';
           html += '<td>' + therapistDisplay + '</td>';
-          html += '<td>' + locationDisplay + '</td>';
+          html += '<td style="text-align:center;">' + workNumber + '</td>';
           html += '<td>' + (b.booking_date || '') + '</td>';
           html += '<td>' + timeDisplay + '</td>';
+          html += '<td>' + workTime + '</td>';
           html += '<td><span class="status-badge ' + statusClass + '">' + statusLabel + '</span></td>';
           html += '</tr>';
         }

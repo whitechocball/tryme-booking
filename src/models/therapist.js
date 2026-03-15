@@ -2,11 +2,11 @@ const db = require('../utils/db');
 const logger = require('../utils/logger');
 
 class Therapist {
-  static async create(name, locationId, externalUserId = null, isVip = false, wechatId = null, displayNumber = null) {
+  static async create(name, locationId, externalUserId = null, isVip = false, wechatId = null, displayNumber = null, profilePicUrl = null, workStartTime = null, workEndTime = null) {
     try {
       const result = await db.query(
-        'INSERT INTO therapists (name, location_id, external_user_id, wechat_id, is_vip, display_number) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-        [name, locationId, externalUserId, wechatId, isVip, displayNumber]
+        'INSERT INTO therapists (name, location_id, external_user_id, wechat_id, is_vip, display_number, profile_pic_url, work_start_time, work_end_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
+        [name, locationId, externalUserId, wechatId, isVip, displayNumber, profilePicUrl, workStartTime, workEndTime]
       );
       logger.info('新技師已創建', { name, locationId, isVip });
       return result.rows[0];
@@ -45,7 +45,7 @@ class Therapist {
   static async getAll() {
     try {
       const result = await db.query(
-        'SELECT t.*, l.name as location_name, l.code as location_code FROM therapists t LEFT JOIN locations l ON t.location_id = l.id ORDER BY t.created_at DESC'
+        'SELECT t.*, l.name as location_name, l.code as location_code FROM therapists t LEFT JOIN locations l ON t.location_id = l.id ORDER BY t.name ASC'
       );
       return result.rows;
     } catch (error) {

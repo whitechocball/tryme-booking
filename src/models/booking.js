@@ -55,7 +55,7 @@ class Booking {
       const result = await db.query(
         `SELECT b.*, b.booking_code,
                 c.name as customer_name, c.telegram_id,
-                t.name as therapist_name, t.external_user_id, t.display_number,
+                t.id as therapist_id, t.name as therapist_name, t.external_user_id, t.wechat_id, t.profile_pic_url, t.work_start_time, t.work_end_time,
                 l.name as location_name, l.code as location_code
          FROM bookings b
          LEFT JOIN customers c ON b.customer_id = c.id
@@ -76,7 +76,7 @@ class Booking {
       const result = await db.query(
         `SELECT b.*, b.booking_code,
                 c.name as customer_name, c.telegram_id,
-                t.name as therapist_name, t.display_number,
+                t.id as therapist_id, t.name as therapist_name, t.wechat_id, t.profile_pic_url, t.work_start_time, t.work_end_time,
                 l.name as location_name, l.code as location_code
          FROM bookings b
          LEFT JOIN customers c ON b.customer_id = c.id
@@ -98,7 +98,7 @@ class Booking {
       const result = await db.query(
         `SELECT b.*, b.booking_code,
                 c.name as customer_name, c.telegram_id,
-                t.name as therapist_name, t.display_number,
+                t.id as therapist_id, t.name as therapist_name, t.wechat_id, t.profile_pic_url, t.work_start_time, t.work_end_time,
                 l.name as location_name, l.code as location_code
          FROM bookings b
          LEFT JOIN customers c ON b.customer_id = c.id
@@ -119,7 +119,7 @@ class Booking {
     try {
       let query = `SELECT b.*, b.booking_code,
                           c.name as customer_name, c.telegram_id,
-                          t.name as therapist_name, t.external_user_id, t.display_number,
+                          t.id as therapist_id, t.name as therapist_name, t.external_user_id, t.wechat_id, t.profile_pic_url, t.work_start_time, t.work_end_time,
                           l.name as location_name, l.code as location_code
                    FROM bookings b
                    LEFT JOIN customers c ON b.customer_id = c.id
@@ -192,7 +192,7 @@ class Booking {
       const result = await db.query(
         `SELECT b.*, b.booking_code,
                 c.name as customer_name, c.telegram_id,
-                t.name as therapist_name, t.display_number,
+                t.id as therapist_id, t.name as therapist_name, t.wechat_id, t.profile_pic_url, t.work_start_time, t.work_end_time,
                 l.name as location_name, l.code as location_code
          FROM bookings b
          LEFT JOIN customers c ON b.customer_id = c.id
