@@ -24,6 +24,46 @@
       width: 16px;
       height: 16px;
     }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .tab-button {
+      padding: 8px 16px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      color: #6b7280;
+      font-weight: 500;
+    }
+    .tab-button.active {
+      color: #3b82f6;
+      border-bottom-color: #3b82f6;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .history-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+    .history-table th,
+    .history-table td {
+      padding: 8px;
+      border: 1px solid #e5e7eb;
+      text-align: left;
+    }
+    .history-table th {
+      background: #f9fafb;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
@@ -58,22 +98,38 @@
         <div id="message"></div>
         <form onsubmit="createTherapist(event)">
           <div class="form-group">
-            <label>技師名稱</label>
+            <label>技師名稱 *</label>
             <input type="text" id="name" required placeholder="例如: 小美">
           </div>
           <div class="form-group">
-            <label>號碼</label>
+            <label>號碼（工號）</label>
             <input type="text" id="display-number" placeholder="例如: 001">
           </div>
           <div class="form-group">
-            <label>所屬場所</label>
-            <select id="location-id" required>
+            <label>現職場所 *</label>
+            <select id="current-location-id" required>
               <option value="">選擇場所...</option>
             </select>
           </div>
           <div class="form-group">
-            <label>微信外部聯繫人 ID</label>
-            <input type="text" id="external-user-id" placeholder="external_userid">
+            <label>主要聯繫微信ID</label>
+            <input type="text" id="wechat-id-primary" placeholder="例如: zhangsan123">
+          </div>
+          <div class="form-group">
+            <label>次要聯繫微信ID</label>
+            <input type="text" id="wechat-id-secondary" placeholder="備用微信ID">
+          </div>
+          <div class="form-group">
+            <label>技師電話號碼</label>
+            <input type="tel" id="phone-number" placeholder="例如: 13800138000">
+          </div>
+          <div class="form-group">
+            <label>上班時間</label>
+            <input type="time" id="work-start-time">
+          </div>
+          <div class="form-group">
+            <label>下班時間</label>
+            <input type="time" id="work-end-time">
           </div>
           <div class="form-group checkbox-group">
             <input type="checkbox" id="is-vip">
@@ -85,14 +141,15 @@
 
       <div class="content-section">
         <h2>技師列表</h2>
-        <div class="table-wrapper">
-          <div id="therapists-container" class="loading">加載中...</div>
-        </div>
+        <div id="therapists-container" class="loading">加載中...</div>
       </div>
     </div>
   </div>
 
   <script>
+    let locations = [];
+    let currentEditingTherapistId = null;
+
     function toggleSidebar() {
       document.getElementById('sidebar').classList.toggle('open');
       document.getElementById('sidebarOverlay').classList.toggle('show');
@@ -101,16 +158,17 @@
     async function loadLocations() {
       try {
         const response = await fetch('/api/locations');
-        const locations = await response.json();
-        const select = document.getElementById('location-id');
-        for (const loc of locations) {
+        locations = await response.json();
+        const select = document.getElementById('current-location-id');
+        select.innerHTML = '<option value="">選擇場所...</option>';
+        locations.forEach(loc => {
           const option = document.createElement('option');
           option.value = loc.id;
-          option.textContent = loc.code + ' - ' + loc.name;
+          option.textContent = `${loc.name} (${loc.code || 'N/A'})`;
           select.appendChild(option);
-        }
-      } catch (e) {
-        console.error('加載場所失敗:', e);
+        });
+      } catch (error) {
+        console.error('加載場所失敗:', error);
       }
     }
 
@@ -118,97 +176,155 @@
       try {
         const response = await fetch('/api/therapists');
         const therapists = await response.json();
-
-        if (!therapists.length) {
-          document.getElementById('therapists-container').innerHTML = '<div style="text-align:center; color:#9ca3af; padding:24px;">暫無技師</div>';
-          return;
-        }
-
-        let html = '<table><thead><tr><th>名稱</th><th>號碼</th><th>場所</th><th>微信ID</th><th>VIP</th><th>操作</th></tr></thead><tbody>';
-        for (const t of therapists) {
-          const vip = t.is_vip ? '<span class="vip-badge">VIP</span>' : '-';
-          const wechatDisplay = t.external_user_id || t.wechat_id || '-';
-          html += '<tr>';
-          html += '<td>' + t.name + '</td>';
-          html += '<td>' + (t.display_number || '-') + '</td>';
-          html += '<td>' + (t.location_name || '未知') + '</td>';
-          html += '<td style="font-size:11px; max-width:120px; overflow:hidden; text-overflow:ellipsis;">' + wechatDisplay + '</td>';
-          html += '<td>' + vip + '</td>';
-          html += '<td style="white-space:nowrap;">';
-          html += '<button class="btn btn-sm" onclick="editTherapist(' + t.id + ')">編輯</button> ';
-          html += '<button class="btn btn-danger btn-sm" onclick="deleteTherapist(' + t.id + ')">刪除</button>';
-          html += '</td></tr>';
-        }
-        html += '</tbody></table>';
-        document.getElementById('therapists-container').innerHTML = html;
-      } catch (e) {
-        document.getElementById('therapists-container').innerHTML = '<div class="msg-error">加載失敗</div>';
+        displayTherapists(therapists);
+      } catch (error) {
+        document.getElementById('therapists-container').innerHTML = `<p style="color:red;">加載失敗: ${error.message}</p>`;
       }
     }
 
-    async function createTherapist(event) {
-      event.preventDefault();
-      const name = document.getElementById('name').value;
-      const displayNumber = document.getElementById('display-number').value;
-      const locationId = parseInt(document.getElementById('location-id').value, 10);
-      const externalUserId = document.getElementById('external-user-id').value;
-      const isVip = document.getElementById('is-vip').checked;
+    function displayTherapists(therapists) {
+      if (!therapists || therapists.length === 0) {
+        document.getElementById('therapists-container').innerHTML = '<p>暫無技師記錄</p>';
+        return;
+      }
+
+      let html = '<div class="table-wrapper"><table class="data-table"><thead><tr>' +
+        '<th>名稱</th>' +
+        '<th>號碼</th>' +
+        '<th>現職場所</th>' +
+        '<th>主要微信ID</th>' +
+        '<th>次要微信ID</th>' +
+        '<th>電話</th>' +
+        '<th>上班時間</th>' +
+        '<th>下班時間</th>' +
+        '<th>VIP</th>' +
+        '<th>操作</th>' +
+        '</tr></thead><tbody>';
+
+      therapists.forEach(t => {
+        html += `<tr>
+          <td>${t.name || '-'}</td>
+          <td>${t.display_number || '-'}</td>
+          <td>${t.location_name || '-'}</td>
+          <td>${t.wechat_id_primary || '-'}</td>
+          <td>${t.wechat_id_secondary || '-'}</td>
+          <td>${t.phone_number || '-'}</td>
+          <td>${t.work_start_time || '-'}</td>
+          <td>${t.work_end_time || '-'}</td>
+          <td>${t.is_vip ? '<span class="vip-badge">VIP</span>' : '-'}</td>
+          <td>
+            <button onclick="editTherapist(${t.id})" class="btn-small">編輯</button>
+            <button onclick="viewHistory(${t.id})" class="btn-small">歷史</button>
+            <button onclick="deleteTherapist(${t.id})" class="btn-small btn-danger">刪除</button>
+          </td>
+        </tr>`;
+      });
+
+      html += '</tbody></table></div>';
+      document.getElementById('therapists-container').innerHTML = html;
+    }
+
+    async function createTherapist(e) {
+      e.preventDefault();
+      const data = {
+        name: document.getElementById('name').value,
+        currentLocationId: parseInt(document.getElementById('current-location-id').value),
+        displayNumber: document.getElementById('display-number').value || null,
+        wechatIdPrimary: document.getElementById('wechat-id-primary').value || null,
+        wechatIdSecondary: document.getElementById('wechat-id-secondary').value || null,
+        phoneNumber: document.getElementById('phone-number').value || null,
+        workStartTime: document.getElementById('work-start-time').value || null,
+        workEndTime: document.getElementById('work-end-time').value || null,
+        isVip: document.getElementById('is-vip').checked
+      };
 
       try {
-        const res = await fetch('/api/therapists', {
+        const response = await fetch('/api/therapists', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, displayNumber, locationId, externalUserId, isVip }),
+          body: JSON.stringify(data)
         });
-        const result = await res.json();
-        if (result.success) {
-          showMessage('技師已新增', 'success');
-          document.getElementById('name').value = '';
-          document.getElementById('display-number').value = '';
-          document.getElementById('location-id').value = '';
-          document.getElementById('external-user-id').value = '';
-          document.getElementById('is-vip').checked = false;
+        const result = await response.json();
+        if (response.ok) {
+          document.getElementById('message').innerHTML = '<p style="color:green;">✓ 技師已創建</p>';
+          document.querySelector('form').reset();
           loadTherapists();
         } else {
-          showMessage(result.error || '新增失敗', 'error');
+          document.getElementById('message').innerHTML = `<p style="color:red;">✗ ${result.error}</p>`;
         }
-      } catch (e) {
-        showMessage('新增失敗: ' + e.message, 'error');
+      } catch (error) {
+        document.getElementById('message').innerHTML = `<p style="color:red;">✗ 創建失敗: ${error.message}</p>`;
       }
     }
 
     async function editTherapist(id) {
-      const name = prompt('輸入新的技師名稱:');
-      if (name === null) return;
-      try {
-        const res = await fetch('/api/therapists/' + id, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name }),
-        });
-        const result = await res.json();
-        if (result.success) { showMessage('技師已更新', 'success'); loadTherapists(); }
-        else showMessage('更新失敗', 'error');
-      } catch (e) { showMessage('更新失敗', 'error'); }
+      const therapist = await fetch(`/api/therapists/${id}`).then(r => r.json());
+      document.getElementById('name').value = therapist.name;
+      document.getElementById('display-number').value = therapist.display_number || '';
+      document.getElementById('current-location-id').value = therapist.current_location_id || '';
+      document.getElementById('wechat-id-primary').value = therapist.wechat_id_primary || '';
+      document.getElementById('wechat-id-secondary').value = therapist.wechat_id_secondary || '';
+      document.getElementById('phone-number').value = therapist.phone_number || '';
+      document.getElementById('work-start-time').value = therapist.work_start_time || '';
+      document.getElementById('work-end-time').value = therapist.work_end_time || '';
+      document.getElementById('is-vip').checked = therapist.is_vip;
+      currentEditingTherapistId = id;
+      window.scrollTo(0, 0);
     }
 
     async function deleteTherapist(id) {
-      if (!confirm('確定要刪除此技師嗎？')) return;
+      if (!confirm('確定刪除此技師嗎？')) return;
       try {
-        const res = await fetch('/api/therapists/' + id, { method: 'DELETE' });
-        const result = await res.json();
-        if (result.success) { showMessage('技師已刪除', 'success'); loadTherapists(); }
-        else showMessage('刪除失敗', 'error');
-      } catch (e) { showMessage('刪除失敗', 'error'); }
+        const response = await fetch(`/api/therapists/${id}`, { method: 'DELETE' });
+        if (response.ok) {
+          loadTherapists();
+        }
+      } catch (error) {
+        alert('刪除失敗: ' + error.message);
+      }
     }
 
-    function showMessage(msg, type) {
-      const div = document.getElementById('message');
-      div.className = type === 'success' ? 'msg-success' : 'msg-error';
-      div.textContent = msg;
-      setTimeout(() => { div.textContent = ''; div.className = ''; }, 3000);
+    async function viewHistory(id) {
+      try {
+        const response = await fetch(`/api/therapists/${id}/history`);
+        const history = await response.json();
+        let html = '<h3>工作歷史</h3>';
+        if (history.length === 0) {
+          html += '<p>暫無工作歷史記錄</p>';
+        } else {
+          html += '<table class="history-table"><thead><tr>' +
+            '<th>場所</th><th>工號</th><th>開始日期</th><th>結束日期</th><th>操作</th>' +
+            '</tr></thead><tbody>';
+          history.forEach(h => {
+            html += `<tr>
+              <td>${h.location_name || '-'}</td>
+              <td>${h.display_number || '-'}</td>
+              <td>${h.start_date || '-'}</td>
+              <td>${h.end_date || '-'}</td>
+              <td><button onclick="deleteHistory(${h.id})" class="btn-small btn-danger">刪除</button></td>
+            </tr>`;
+          });
+          html += '</tbody></table>';
+        }
+        alert(html);
+      } catch (error) {
+        alert('加載歷史失敗: ' + error.message);
+      }
     }
 
+    async function deleteHistory(id) {
+      if (!confirm('確定刪除此歷史記錄嗎？')) return;
+      try {
+        const response = await fetch(`/api/therapists/history/${id}`, { method: 'DELETE' });
+        if (response.ok) {
+          loadTherapists();
+        }
+      } catch (error) {
+        alert('刪除失敗: ' + error.message);
+      }
+    }
+
+    // 初始化
     loadLocations();
     loadTherapists();
   </script>

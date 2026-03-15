@@ -2,13 +2,13 @@ const db = require('../utils/db');
 const logger = require('../utils/logger');
 
 class Therapist {
-  static async create(name, locationId, externalUserId = null, isVip = false, wechatId = null, displayNumber = null, profilePicUrl = null, workStartTime = null, workEndTime = null) {
+  static async create(name, currentLocationId, isVip = false, wechatIdPrimary = null, wechatIdSecondary = null, phoneNumber = null, displayNumber = null, profilePicUrl = null, workStartTime = null, workEndTime = null) {
     try {
       const result = await db.query(
-        'INSERT INTO therapists (name, location_id, external_user_id, wechat_id, is_vip, display_number, profile_pic_url, work_start_time, work_end_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
-        [name, locationId, externalUserId, wechatId, isVip, displayNumber, profilePicUrl, workStartTime, workEndTime]
+        'INSERT INTO therapists (name, current_location_id, is_vip, wechat_id_primary, wechat_id_secondary, phone_number, display_number, profile_pic_url, work_start_time, work_end_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
+        [name, currentLocationId, isVip, wechatIdPrimary, wechatIdSecondary, phoneNumber, displayNumber, profilePicUrl, workStartTime, workEndTime]
       );
-      logger.info('新技師已創建', { name, locationId, isVip });
+      logger.info('新技師已創建', { name, currentLocationId, isVip });
       return result.rows[0];
     } catch (error) {
       logger.error('創建技師失敗', { error: error.message, name });
@@ -19,7 +19,7 @@ class Therapist {
   static async getById(therapistId) {
     try {
       const result = await db.query(
-        'SELECT * FROM therapists WHERE id = $1',
+        'SELECT t.*, l.name as location_name, l.code as location_code FROM therapists t LEFT JOIN locations l ON t.current_location_id = l.id WHERE t.id = $1',
         [therapistId]
       );
       return result.rows[0] || null;
@@ -32,7 +32,7 @@ class Therapist {
   static async getByLocation(locationId) {
     try {
       const result = await db.query(
-        'SELECT * FROM therapists WHERE location_id = $1 ORDER BY name',
+        'SELECT t.*, l.name as location_name FROM therapists t LEFT JOIN locations l ON t.current_location_id = l.id WHERE t.current_location_id = $1 ORDER BY t.name',
         [locationId]
       );
       return result.rows;
@@ -45,7 +45,7 @@ class Therapist {
   static async getAll() {
     try {
       const result = await db.query(
-        'SELECT t.*, l.name as location_name, l.code as location_code FROM therapists t LEFT JOIN locations l ON t.location_id = l.id ORDER BY t.name ASC'
+        'SELECT t.*, l.name as location_name, l.code as location_code FROM therapists t LEFT JOIN locations l ON t.current_location_id = l.id ORDER BY t.name ASC'
       );
       return result.rows;
     } catch (error) {
@@ -105,15 +105,72 @@ class Therapist {
     }
   }
 
-  static async getByExternalUserId(externalUserId) {
+  // 工作歷史相關方法
+  static async addWorkHistory(therapistId, locationId, displayNumber, startDate, endDate = null) {
     try {
       const result = await db.query(
-        'SELECT * FROM therapists WHERE external_user_id = $1',
-        [externalUserId]
+        'INSERT INTO therapist_history (therapist_id, location_id, display_number, start_date, end_date) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+        [therapistId, locationId, displayNumber, startDate, endDate]
       );
-      return result.rows[0] || null;
+      logger.info('工作歷史已添加', { therapistId, locationId });
+      return result.rows[0];
     } catch (error) {
-      logger.error('查詢外部聯繫人技師失敗', { error: error.message, externalUserId });
+      logger.error('添加工作歷史失敗', { error: error.message, therapistId });
+      throw error;
+    }
+  }
+
+  static async getWorkHistory(therapistId) {
+    try {
+      const result = await db.query(
+        `SELECT th.*, l.name as location_name, l.code as location_code 
+         FROM therapist_history th 
+         LEFT JOIN locations l ON th.location_id = l.id 
+         WHERE th.therapist_id = $1 
+         ORDER BY th.start_date DESC`,
+        [therapistId]
+      );
+      return result.rows;
+    } catch (error) {
+      logger.error('查詢工作歷史失敗', { error: error.message, therapistId });
+      throw error;
+    }
+  }
+
+  static async updateWorkHistory(historyId, updates) {
+    try {
+      const fields = [];
+      const values = [];
+      let paramCount = 1;
+
+      for (const [key, value] of Object.entries(updates)) {
+        fields.push(`${key} = $${paramCount}`);
+        values.push(value);
+        paramCount++;
+      }
+
+      fields.push(`updated_at = CURRENT_TIMESTAMP`);
+      values.push(historyId);
+
+      const result = await db.query(
+        `UPDATE therapist_history SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+        values
+      );
+
+      logger.info('工作歷史已更新', { historyId });
+      return result.rows[0];
+    } catch (error) {
+      logger.error('更新工作歷史失敗', { error: error.message, historyId });
+      throw error;
+    }
+  }
+
+  static async deleteWorkHistory(historyId) {
+    try {
+      await db.query('DELETE FROM therapist_history WHERE id = $1', [historyId]);
+      logger.info('工作歷史已刪除', { historyId });
+    } catch (error) {
+      logger.error('刪除工作歷史失敗', { error: error.message, historyId });
       throw error;
     }
   }
