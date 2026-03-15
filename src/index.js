@@ -126,6 +126,35 @@ async function runMigrations(maxRetries = 5) {
         console.log(`  ✓ ${file} 完成`);
       }
 
+      // 確保 therapists 表有所有必需的列
+      console.log('  確保 therapists 表有所有必需的列...');
+      await db.query(`
+        DO $$ 
+        BEGIN 
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='display_number') THEN
+            ALTER TABLE therapists ADD COLUMN display_number VARCHAR(50);
+            RAISE NOTICE 'Added display_number column';
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='wechat_id') THEN
+            ALTER TABLE therapists ADD COLUMN wechat_id VARCHAR(100);
+            RAISE NOTICE 'Added wechat_id column';
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='profile_pic_url') THEN
+            ALTER TABLE therapists ADD COLUMN profile_pic_url TEXT;
+            RAISE NOTICE 'Added profile_pic_url column';
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='work_start_time') THEN
+            ALTER TABLE therapists ADD COLUMN work_start_time TIME;
+            RAISE NOTICE 'Added work_start_time column';
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='therapists' AND column_name='work_end_time') THEN
+            ALTER TABLE therapists ADD COLUMN work_end_time TIME;
+            RAISE NOTICE 'Added work_end_time column';
+          END IF;
+        END $$;
+      `);
+      console.log('  ✓ therapists 表列檢查完成');
+
       // 插入默認時間段配置
       await db.query(`
         INSERT INTO time_options (time_slot, option_letter, start_time, end_time)
