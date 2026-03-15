@@ -162,7 +162,7 @@
         ranking.forEach((item, idx) => {
           const rankClass = idx === 0 ? 'top-1' : idx === 1 ? 'top-2' : idx === 2 ? 'top-3' : 'normal';
           const locationInfo = item.location_name ? (item.location_code + ' ' + item.location_name) : '';
-          const numberInfo = item.display_number ? (' #' + item.display_number) : '';
+          const numberInfo = '';
           html += '<li class="ranking-item">';
           html += '  <div class="ranking-rank ' + rankClass + '">' + (idx + 1) + '</div>';
           html += '  <div class="ranking-info">';
@@ -203,7 +203,7 @@
           const displayId = b.booking_code || b.id;
           const statusLabel = STATUS_MAP[b.status] || b.status;
           const statusClass = 'status-' + b.status;
-          const therapistInfo = b.therapist_name + (b.display_number ? ' #' + b.display_number : '');
+          const therapistInfo = b.therapist_name;
 
           html += '<tr>';
           html += '<td>' + displayId + '</td>';
