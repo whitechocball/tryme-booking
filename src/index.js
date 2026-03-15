@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const db = require('./utils/db');
-const logger = require('./utils/logger');
+const logger = require('../utils/logger');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -125,45 +125,33 @@ async function runMigrations(maxRetries = 5) {
       // 確保所有表有所有必需的列
       console.log('  確保所有表有所有必需的列...');
       
-      // therapists 表列
-      const therapistCols = [
-        ['display_number', 'VARCHAR(50)'],
-        ['wechat_id', 'VARCHAR(100)'],
-        ['profile_pic_url', 'TEXT'],
-        ['work_start_time', 'TIME'],
-        ['work_end_time', 'TIME']
+      const alterStatements = [
+        // therapists 表
+        'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS display_number VARCHAR(50)',
+        'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS wechat_id VARCHAR(100)',
+        'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS profile_pic_url TEXT',
+        'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS work_start_time TIME',
+        'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS work_end_time TIME',
+        // bookings 表
+        'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_code VARCHAR(50)',
+        // no_shows 表
+        'ALTER TABLE no_shows ADD COLUMN IF NOT EXISTS therapist_notes TEXT',
+        'ALTER TABLE no_shows ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP',
+        // locations 表
+        'ALTER TABLE locations ADD COLUMN IF NOT EXISTS description TEXT',
+        'ALTER TABLE locations ADD COLUMN IF NOT EXISTS map_url TEXT'
       ];
-      for (const [colName, colType] of therapistCols) {
-        try {
-          await db.query(`ALTER TABLE therapists ADD COLUMN IF NOT EXISTS ${colName} ${colType}`);
-          console.log(`    ✓ therapists.${colName} 已確保`);
-        } catch (e) {
-          console.log(`    ⚠ therapists.${colName}: ${e.message.substring(0, 40)}`);
-        }
-      }
       
-      // bookings 表列
-      const bookingCols = [['booking_code', 'VARCHAR(50)']];
-      for (const [colName, colType] of bookingCols) {
+      for (const stmt of alterStatements) {
         try {
-          await db.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS ${colName} ${colType}`);
-          console.log(`    ✓ bookings.${colName} 已確保`);
+          await db.query(stmt);
+          const colMatch = stmt.match(/ADD COLUMN IF NOT EXISTS (\w+)/);
+          const colName = colMatch ? colMatch[1] : 'unknown';
+          console.log(`    ✓ ${colName} 已確保`);
         } catch (e) {
-          console.log(`    ⚠ bookings.${colName}: ${e.message.substring(0, 40)}`);
-        }
-      }
-      
-      // no_shows 表列
-      const noshowCols = [
-        ['therapist_notes', 'TEXT'],
-        ['updated_at', 'TIMESTAMP']
-      ];
-      for (const [colName, colType] of noshowCols) {
-        try {
-          await db.query(`ALTER TABLE no_shows ADD COLUMN IF NOT EXISTS ${colName} ${colType}`);
-          console.log(`    ✓ no_shows.${colName} 已確保`);
-        } catch (e) {
-          console.log(`    ⚠ no_shows.${colName}: ${e.message.substring(0, 40)}`);
+          const colMatch = stmt.match(/ADD COLUMN IF NOT EXISTS (\w+)/);
+          const colName = colMatch ? colMatch[1] : 'unknown';
+          console.log(`    ⚠ ${colName}: ${e.message.substring(0, 50)}`);
         }
       }
       
@@ -250,10 +238,11 @@ process.on('uncaughtException', (error) => {
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error('未處理的 Promise 拒絕', { reason, promise });
+  logger.error('未處理的 Promise 拒絕', { reason });
   console.error('❌ 未處理的 Promise 拒絕:', reason);
 });
 
+// 啟動伺服器
 startServer();
 
 module.exports = app;
