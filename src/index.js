@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const db = require('./utils/db');
+const { ensureColumns } = require('./utils/ensureColumns');
 const logger = require('../utils/logger');
 
 const app = express();
@@ -172,6 +173,7 @@ async function runMigrations(maxRetries = 5) {
 
       // 確保所有表有所有必需的列
       console.log('  確保所有表有所有必需的列...');
+      await ensureColumns();
       
       const alterStatements = [
         // therapists 表
