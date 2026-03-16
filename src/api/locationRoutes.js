@@ -3,12 +3,13 @@ const router = express.Router();
 const Location = require('../models/location');
 const Therapist = require('../models/therapist');
 const logger = require('../utils/logger');
-const pinyin = require('pinyin');
+const pinyinLib = require('pinyin');
+const pinyin = pinyinLib.default || pinyinLib.pinyin || pinyinLib;
 
 // 生成場所代碼（拼音首字母）
 function generateLocationCode(name) {
-  const pinyinArray = pinyin(name, { style: pinyin.STYLE_FIRST_LETTER });
-  return pinyinArray.map(p => p[0].toUpperCase()).join('');
+  const pinyinArray = pinyin(name);
+  return pinyinArray.map(p => p[0][0].toUpperCase()).join('');
 }
 
 // 獲取所有場所
