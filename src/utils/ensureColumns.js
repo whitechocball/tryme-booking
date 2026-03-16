@@ -7,6 +7,13 @@ async function ensureColumns() {
   const statements = [
     // bookings 表
     'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_code VARCHAR(20)',
+    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS ai_session_id INTEGER',
+    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_time VARCHAR(20)',
+    // 新功能：衝突檢測 & 狀態流程
+    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS has_conflict BOOLEAN DEFAULT FALSE',
+    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS timeout_notified BOOLEAN DEFAULT FALSE',
+    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS status_changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancel_reason TEXT',
     
     // therapists 表
     'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS display_number VARCHAR(20)',
@@ -19,10 +26,6 @@ async function ensureColumns() {
     'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS current_location_id INTEGER',
     'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS telegram_id VARCHAR(100)',
     'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS wechat_userid VARCHAR(255)',
-    
-    // bookings 表 - AI 預約相關
-    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS ai_session_id INTEGER',
-    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_time VARCHAR(20)',
     
     // no_shows 表
     'ALTER TABLE no_shows ADD COLUMN IF NOT EXISTS therapist_notes TEXT',
@@ -46,6 +49,21 @@ async function ensureColumns() {
       const colMatch = stmt.match(/ADD COLUMN IF NOT EXISTS (\w+)/);
       const colName = colMatch ? colMatch[1] : 'unknown';
       console.log(`  ⚠ ${colName}: ${error.message.substring(0, 40)}`);
+    }
+  }
+
+  // 創建索引
+  const indexes = [
+    'CREATE INDEX IF NOT EXISTS idx_bookings_therapist_date_slot ON bookings(therapist_id, booking_date, time_slot, time_option)',
+    'CREATE INDEX IF NOT EXISTS idx_bookings_status_date ON bookings(status, booking_date)',
+  ];
+
+  for (const idx of indexes) {
+    try {
+      await db.query(idx);
+      console.log(`  ✓ 索引已確保`);
+    } catch (error) {
+      console.log(`  ⚠ 索引: ${error.message.substring(0, 40)}`);
     }
   }
   

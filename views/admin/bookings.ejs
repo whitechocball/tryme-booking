@@ -6,56 +6,143 @@
   <title>Tryme 管理後台 - 預約管理</title>
   <link rel="stylesheet" href="/admin-styles.css">
   <style>
-    .therapist-cell {
-      display: flex;
-      align-items: center;
-      gap: 8px;
+    .conflict-badge {
+      display: inline-block;
+      background: #fef2f2;
+      color: #dc2626;
+      border: 1px solid #fca5a5;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-left: 6px;
+      animation: pulse 2s infinite;
     }
-    .therapist-info {
-      flex: 1;
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
     }
-    .therapist-pic-link {
-      color: #3b82f6;
-      text-decoration: none;
+    .conflict-row {
+      background: #fef2f2 !important;
+      border-left: 3px solid #dc2626;
+    }
+    .status-select {
+      padding: 4px 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
       font-size: 12px;
+      background: white;
       cursor: pointer;
     }
-    .therapist-pic-link:hover {
-      text-decoration: underline;
+    .status-select:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
     }
-    .pic-modal {
+    .action-btns {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .btn-xs {
+      padding: 3px 8px;
+      font-size: 11px;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .btn-confirm { background: #10b981; color: white; }
+    .btn-confirm:hover { background: #059669; }
+    .btn-start { background: #3b82f6; color: white; }
+    .btn-start:hover { background: #2563eb; }
+    .btn-complete { background: #8b5cf6; color: white; }
+    .btn-complete:hover { background: #7c3aed; }
+    .btn-cancel-action { background: #ef4444; color: white; }
+    .btn-cancel-action:hover { background: #dc2626; }
+    .btn-noshow { background: #f59e0b; color: white; }
+    .btn-noshow:hover { background: #d97706; }
+    .timeout-badge {
+      display: inline-block;
+      background: #fef3c7;
+      color: #92400e;
+      padding: 2px 6px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-left: 4px;
+    }
+    .stats-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .mini-stat {
+      background: white;
+      padding: 12px 16px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      text-align: center;
+      min-width: 100px;
+    }
+    .mini-stat .label {
+      font-size: 11px;
+      color: #6b7280;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .mini-stat .value {
+      font-size: 22px;
+      font-weight: 700;
+      color: #3b82f6;
+    }
+    .mini-stat.conflict .value { color: #dc2626; }
+    .modal-overlay {
       display: none;
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.7);
-      z-index: 1000;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 2000;
       align-items: center;
       justify-content: center;
     }
-    .pic-modal.show {
-      display: flex;
-    }
-    .pic-modal-content {
+    .modal-overlay.show { display: flex; }
+    .modal-box {
       background: white;
-      padding: 20px;
-      border-radius: 8px;
-      max-width: 90%;
-      max-height: 90%;
-      overflow: auto;
+      padding: 24px;
+      border-radius: 12px;
+      max-width: 400px;
+      width: 90%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
     }
-    .pic-modal img {
-      max-width: 100%;
-      max-height: 600px;
+    .modal-box h3 {
+      margin-bottom: 16px;
+      font-size: 16px;
+      color: #1a1a2e;
     }
-    .pic-modal-close {
-      float: right;
-      cursor: pointer;
-      font-size: 24px;
-      color: #999;
+    .modal-box textarea {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 13px;
+      min-height: 80px;
+      resize: vertical;
     }
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 16px;
+    }
+    .status-pending { background: #fef3c7; color: #92400e; }
+    .status-confirmed { background: #dbeafe; color: #1e40af; }
+    .status-in_progress { background: #e0e7ff; color: #3730a3; }
+    .status-completed { background: #d1fae5; color: #065f46; }
+    .status-cancelled { background: #e5e7eb; color: #374151; }
+    .status-no_show { background: #fee2e2; color: #991b1b; }
   </style>
 </head>
 <body>
@@ -66,7 +153,7 @@
     <div class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <h1>Tryme</h1>
-        <span class="version-tag">v1.0 | 2026-03-15</span>
+        <span class="version-tag">v1.1 | 2026-03-16</span>
       </div>
       <nav>
         <ul>
@@ -84,20 +171,52 @@
     <div class="main-content">
       <div class="page-header">
         <h1>預約管理</h1>
+        <div>
+          <button class="btn btn-sm" onclick="detectConflicts()" title="手動執行衝突檢測">衝突檢測</button>
+          <button class="btn btn-sm" onclick="handleTimeouts()" title="手動處理超時預約" style="margin-left:6px;">超時處理</button>
+        </div>
       </div>
 
+      <!-- 統計概覽 -->
+      <div class="stats-row" id="stats-row">
+        <div class="mini-stat"><div class="label">總計</div><div class="value" id="stat-total">0</div></div>
+        <div class="mini-stat"><div class="label">待確認</div><div class="value" id="stat-pending">0</div></div>
+        <div class="mini-stat"><div class="label">已確認</div><div class="value" id="stat-confirmed">0</div></div>
+        <div class="mini-stat"><div class="label">進行中</div><div class="value" id="stat-inprogress">0</div></div>
+        <div class="mini-stat"><div class="label">已完成</div><div class="value" id="stat-completed">0</div></div>
+        <div class="mini-stat conflict"><div class="label">衝突</div><div class="value" id="stat-conflicts">0</div></div>
+      </div>
+
+      <!-- 篩選器 -->
       <div class="filters">
         <input type="date" id="filter-date" placeholder="篩選日期">
         <select id="filter-status">
           <option value="">所有狀態</option>
-          <option value="waiting_therapist">等待技師回覆</option>
-          <option value="waiting_service">等待進入服務</option>
-          <option value="completed">已完成服務</option>
-          <option value="customer_no_show">客戶爽約</option>
-          <option value="therapist_cancelled">技師取消</option>
-          <option value="therapist_no_show">技師爽約</option>
+          <option value="pending">待確認</option>
+          <option value="confirmed">技師已確認</option>
+          <option value="in_progress">進行中</option>
+          <option value="completed">已完成</option>
+          <option value="cancelled">已取消</option>
+          <option value="no_show">爽約</option>
+          <optgroup label="舊狀態（兼容）">
+            <option value="waiting_therapist">等待技師回覆</option>
+            <option value="waiting_service">等待進入服務</option>
+            <option value="customer_no_show">客戶爽約</option>
+            <option value="therapist_cancelled">技師取消</option>
+            <option value="therapist_no_show">技師爽約</option>
+          </optgroup>
         </select>
+        <select id="filter-therapist">
+          <option value="">所有技師</option>
+        </select>
+        <select id="filter-location">
+          <option value="">所有場所</option>
+        </select>
+        <label style="display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;">
+          <input type="checkbox" id="filter-conflict"> 僅衝突
+        </label>
         <button class="btn" onclick="loadBookings()">搜索</button>
+        <button class="btn btn-outline" onclick="resetFilters()">重置</button>
       </div>
 
       <div class="content-section">
@@ -109,11 +228,30 @@
     </div>
   </div>
 
-  <!-- 圖片查看模態框 -->
-  <div class="pic-modal" id="picModal">
-    <div class="pic-modal-content">
-      <span class="pic-modal-close" onclick="closePicModal()">&times;</span>
-      <img id="picImage" src="" alt="技師頭像">
+  <!-- 狀態更改模態框 -->
+  <div class="modal-overlay" id="statusModal">
+    <div class="modal-box">
+      <h3 id="modal-title">更改預約狀態</h3>
+      <div class="form-group">
+        <label>新狀態</label>
+        <select id="modal-status" class="status-select" style="width:100%; padding:8px;">
+          <option value="pending">待確認</option>
+          <option value="confirmed">技師已確認</option>
+          <option value="in_progress">進行中</option>
+          <option value="completed">已完成</option>
+          <option value="cancelled">已取消</option>
+          <option value="no_show">爽約</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>備註（可選）</label>
+        <textarea id="modal-reason" placeholder="輸入更改原因..."></textarea>
+      </div>
+      <input type="hidden" id="modal-booking-id">
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeStatusModal()">取消</button>
+        <button class="btn" onclick="submitStatusChange()">確認更改</button>
+      </div>
     </div>
   </div>
 
@@ -124,40 +262,99 @@
     }
 
     const STATUS_MAP = {
+      'pending': '待確認',
+      'confirmed': '技師已確認',
+      'in_progress': '進行中',
+      'completed': '已完成',
+      'cancelled': '已取消',
+      'no_show': '爽約',
       'waiting_therapist': '等待技師回覆',
       'waiting_service': '等待進入服務',
-      'completed': '已完成服務',
       'customer_no_show': '客戶爽約',
       'therapist_cancelled': '技師取消',
       'therapist_no_show': '技師爽約',
-      'pending': '待處理',
-      'confirmed': '已確認',
-      'rejected': '已拒絕',
-      'cancelled': '已取消',
     };
 
-    function showPicModal(picUrl) {
-      if (!picUrl) {
-        alert('暫無圖片');
-        return;
+    const TIME_SLOT_MAP = {
+      'morning': '早上',
+      'afternoon': '中午',
+      'evening': '晚上',
+    };
+
+    // 載入篩選器選項
+    async function loadFilterOptions() {
+      try {
+        const [therapistsRes, locationsRes] = await Promise.all([
+          fetch('/api/therapists'),
+          fetch('/api/locations')
+        ]);
+        const therapists = await therapistsRes.json();
+        const locations = await locationsRes.json();
+
+        const therapistSelect = document.getElementById('filter-therapist');
+        therapists.forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t.id;
+          opt.textContent = t.name + (t.display_number ? ` (#${t.display_number})` : '');
+          therapistSelect.appendChild(opt);
+        });
+
+        const locationSelect = document.getElementById('filter-location');
+        locations.forEach(l => {
+          const opt = document.createElement('option');
+          opt.value = l.id;
+          opt.textContent = (l.code || '') + ' ' + l.name;
+          locationSelect.appendChild(opt);
+        });
+      } catch (e) {
+        console.error('載入篩選選項失敗:', e);
       }
-      document.getElementById('picImage').src = picUrl;
-      document.getElementById('picModal').classList.add('show');
     }
 
-    function closePicModal() {
-      document.getElementById('picModal').classList.remove('show');
+    function resetFilters() {
+      document.getElementById('filter-date').value = '';
+      document.getElementById('filter-status').value = '';
+      document.getElementById('filter-therapist').value = '';
+      document.getElementById('filter-location').value = '';
+      document.getElementById('filter-conflict').checked = false;
+      loadBookings();
     }
 
+    // 載入統計
+    async function loadStats() {
+      try {
+        const date = document.getElementById('filter-date').value;
+        const url = date ? `/api/bookings/stats/daily?date=${date}` : '/api/bookings/stats/daily';
+        const res = await fetch(url);
+        const stats = await res.json();
+        document.getElementById('stat-total').textContent = stats.totalBookings || 0;
+        document.getElementById('stat-pending').textContent = (stats.pending || 0) + (stats.waitingTherapist > (stats.pending || 0) ? stats.waitingTherapist - (stats.pending || 0) : 0);
+        document.getElementById('stat-confirmed').textContent = (stats.confirmed || 0) + (stats.waitingService > (stats.confirmed || 0) ? stats.waitingService - (stats.confirmed || 0) : 0);
+        document.getElementById('stat-inprogress').textContent = stats.inProgress || 0;
+        document.getElementById('stat-completed').textContent = stats.completed || 0;
+        document.getElementById('stat-conflicts').textContent = stats.conflicts || 0;
+      } catch (e) {
+        console.error('載入統計失敗:', e);
+      }
+    }
+
+    // 載入預約列表
     async function loadBookings() {
       try {
         const date = document.getElementById('filter-date').value;
         const status = document.getElementById('filter-status').value;
+        const therapistId = document.getElementById('filter-therapist').value;
+        const locationId = document.getElementById('filter-location').value;
+        const hasConflict = document.getElementById('filter-conflict').checked;
 
-        let url = '/api/bookings';
         const params = new URLSearchParams();
         if (date) params.append('bookingDate', date);
         if (status) params.append('status', status);
+        if (therapistId) params.append('therapistId', therapistId);
+        if (locationId) params.append('locationId', locationId);
+        if (hasConflict) params.append('hasConflict', 'true');
+
+        let url = '/api/bookings';
         if (params.toString()) url += '?' + params.toString();
 
         const response = await fetch(url);
@@ -165,11 +362,12 @@
 
         if (!bookings.length) {
           document.getElementById('bookings-container').innerHTML = '<div style="text-align:center; color:#9ca3af; padding:24px;">暫無預約記錄</div>';
+          loadStats();
           return;
         }
 
         let html = '<table><thead><tr>';
-        html += '<th>預約ID</th><th>客戶</th><th>技師</th><th>工號</th><th>日期</th><th>客戶預約時段</th><th>工作時間</th><th>狀態</th>';
+        html += '<th>ID</th><th>客戶</th><th>技師</th><th>場所</th><th>日期</th><th>時段</th><th>狀態</th><th>操作</th>';
         html += '</tr></thead><tbody>';
 
         for (const b of bookings) {
@@ -177,44 +375,151 @@
           const statusLabel = STATUS_MAP[b.status] || b.status;
           const statusClass = 'status-' + b.status;
           const customerDisplay = b.customer_name || ('TG:' + (b.telegram_id || '未知'));
-          
-          // 技師欄位：顯示技師名稱、微信ID和圖片連結
-          let therapistDisplay = b.therapist_name || '未知';
-          if (b.wechat_id) {
-            therapistDisplay += '<br><small style="color:#6b7280;">微信: ' + b.wechat_id + '</small>';
-          }
-          if (b.profile_pic_url) {
-            therapistDisplay += ' <a href="#" class="therapist-pic-link" onclick="showPicModal(\'' + b.profile_pic_url.replace(/'/g, "\\'") + '\'); return false;">(pic)</a>';
-          }
-          
-          // 工號欄位
-          const workNumber = b.display_number || '-';
-          
-          // 工作時間
-          const workTime = (b.work_start_time && b.work_end_time) 
-            ? (b.work_start_time.substring(0, 5) + ' - ' + b.work_end_time.substring(0, 5))
-            : '-';
-          
-          // 客戶預約時段
-          const timeDisplay = (b.time_slot || '') + ' ' + (b.time_option || '');
+          const therapistDisplay = b.therapist_name || '未知';
+          const locationDisplay = b.location_name || '-';
+          const timeDisplay = (TIME_SLOT_MAP[b.time_slot] || b.time_slot || '') + ' ' + (b.time_option || '');
+          const isConflict = b.has_conflict;
+          const isTimeout = b.timeout_notified;
+          const rowClass = isConflict ? 'conflict-row' : '';
 
-          html += '<tr>';
-          html += '<td style="font-family:monospace; font-size:12px;">' + displayId + '</td>';
+          html += '<tr class="' + rowClass + '">';
+          html += '<td style="font-family:monospace; font-size:12px;">' + displayId;
+          if (isConflict) html += '<span class="conflict-badge">衝突</span>';
+          if (isTimeout) html += '<span class="timeout-badge">已超時</span>';
+          html += '</td>';
           html += '<td>' + customerDisplay + '</td>';
-          html += '<td>' + therapistDisplay + '</td>';
-          html += '<td style="text-align:center;">' + workNumber + '</td>';
+          html += '<td>' + therapistDisplay + (b.display_number ? ' <small style="color:#6b7280;">#' + b.display_number + '</small>' : '') + '</td>';
+          html += '<td>' + locationDisplay + '</td>';
           html += '<td>' + (b.booking_date || '') + '</td>';
           html += '<td>' + timeDisplay + '</td>';
-          html += '<td>' + workTime + '</td>';
           html += '<td><span class="status-badge ' + statusClass + '">' + statusLabel + '</span></td>';
+
+          // 操作按鈕
+          html += '<td><div class="action-btns">';
+          
+          // 根據當前狀態顯示可用操作
+          if (b.status === 'pending' || b.status === 'waiting_therapist') {
+            html += '<button class="btn-xs btn-confirm" onclick="quickAction(' + b.id + ', \'confirm\')">確認</button>';
+            html += '<button class="btn-xs btn-cancel-action" onclick="quickAction(' + b.id + ', \'cancel\')">取消</button>';
+          }
+          if (b.status === 'confirmed' || b.status === 'waiting_service') {
+            html += '<button class="btn-xs btn-start" onclick="quickAction(' + b.id + ', \'start\')">開始</button>';
+            html += '<button class="btn-xs btn-cancel-action" onclick="quickAction(' + b.id + ', \'cancel\')">取消</button>';
+          }
+          if (b.status === 'in_progress') {
+            html += '<button class="btn-xs btn-complete" onclick="quickAction(' + b.id + ', \'complete\')">完成</button>';
+          }
+          if (['pending', 'confirmed', 'in_progress', 'waiting_therapist', 'waiting_service'].includes(b.status)) {
+            html += '<button class="btn-xs btn-noshow" onclick="quickAction(' + b.id + ', \'noshow\')">爽約</button>';
+          }
+
+          // 手動更改狀態按鈕
+          html += '<button class="btn-xs" style="background:#6b7280; color:white;" onclick="openStatusModal(' + b.id + ', \'' + b.status + '\')">改狀態</button>';
+
+          html += '</div></td>';
           html += '</tr>';
         }
 
         html += '</tbody></table>';
         document.getElementById('bookings-container').innerHTML = html;
+        loadStats();
       } catch (error) {
         console.error('加載預約失敗:', error);
-        document.getElementById('bookings-container').innerHTML = '<div class="msg-error">加載失敗</div>';
+        document.getElementById('bookings-container').innerHTML = '<div class="msg-error">加載失敗: ' + error.message + '</div>';
+      }
+    }
+
+    // 快速操作
+    async function quickAction(bookingId, action) {
+      const actionMap = {
+        'confirm': { url: `/api/bookings/${bookingId}/status`, body: { status: 'confirmed' }, label: '確認' },
+        'start': { url: `/api/bookings/${bookingId}/start`, body: {}, label: '開始服務' },
+        'complete': { url: `/api/bookings/${bookingId}/complete`, body: {}, label: '完成服務' },
+        'cancel': { url: `/api/bookings/${bookingId}/status`, body: { status: 'cancelled', reason: '管理員取消' }, label: '取消' },
+        'noshow': { url: `/api/bookings/${bookingId}/noshow`, body: { reason: '管理員標記爽約' }, label: '標記爽約' },
+      };
+
+      const config = actionMap[action];
+      if (!config) return;
+
+      if (!confirm(`確定要${config.label}預約 #${bookingId}？`)) return;
+
+      try {
+        const res = await fetch(config.url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config.body),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showMessage(`${config.label}成功`, 'success');
+          loadBookings();
+        } else {
+          showMessage(data.error || '操作失敗', 'error');
+        }
+      } catch (e) {
+        showMessage('操作失敗: ' + e.message, 'error');
+      }
+    }
+
+    // 狀態更改模態框
+    function openStatusModal(bookingId, currentStatus) {
+      document.getElementById('modal-booking-id').value = bookingId;
+      document.getElementById('modal-status').value = currentStatus;
+      document.getElementById('modal-reason').value = '';
+      document.getElementById('modal-title').textContent = `更改預約 #${bookingId} 狀態`;
+      document.getElementById('statusModal').classList.add('show');
+    }
+
+    function closeStatusModal() {
+      document.getElementById('statusModal').classList.remove('show');
+    }
+
+    async function submitStatusChange() {
+      const bookingId = document.getElementById('modal-booking-id').value;
+      const status = document.getElementById('modal-status').value;
+      const reason = document.getElementById('modal-reason').value;
+
+      try {
+        const res = await fetch(`/api/bookings/${bookingId}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status, reason: reason || undefined }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showMessage(`狀態已更新為 "${STATUS_MAP[status] || status}"`, 'success');
+          closeStatusModal();
+          loadBookings();
+        } else {
+          showMessage(data.error || '更新失敗', 'error');
+        }
+      } catch (e) {
+        showMessage('更新失敗: ' + e.message, 'error');
+      }
+    }
+
+    // 衝突檢測
+    async function detectConflicts() {
+      try {
+        const res = await fetch('/api/bookings/detect-conflicts', { method: 'POST' });
+        const data = await res.json();
+        showMessage(data.message || '衝突檢測完成', 'success');
+        loadBookings();
+      } catch (e) {
+        showMessage('衝突檢測失敗: ' + e.message, 'error');
+      }
+    }
+
+    // 超時處理
+    async function handleTimeouts() {
+      try {
+        const res = await fetch('/api/bookings/handle-timeouts', { method: 'POST' });
+        const data = await res.json();
+        showMessage(`超時處理完成：處理 ${data.processed || 0} 個，通知 ${data.notified || 0} 個`, 'success');
+        loadBookings();
+      } catch (e) {
+        showMessage('超時處理失敗: ' + e.message, 'error');
       }
     }
 
@@ -222,10 +527,15 @@
       const div = document.getElementById('message');
       div.className = type === 'success' ? 'msg-success' : 'msg-error';
       div.textContent = message;
-      setTimeout(() => { div.textContent = ''; div.className = ''; }, 3000);
+      setTimeout(() => { div.textContent = ''; div.className = ''; }, 4000);
     }
 
+    // 初始化
+    loadFilterOptions();
     loadBookings();
+
+    // 每 30 秒自動刷新
+    setInterval(loadBookings, 30000);
   </script>
 </body>
 </html>

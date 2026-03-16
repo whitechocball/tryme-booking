@@ -54,9 +54,9 @@ app.get('/health', (req, res) => {
     database: 'connected',
     timestamp: new Date().toISOString(),
     uptime: Math.floor(uptime),
-    version: '1.1.0',
-    releaseDate: '2026-03-15',
-    features: ['telegram-ai-booking', 'wechat-bridge']
+    version: '1.2.0',
+    releaseDate: '2026-03-16',
+    features: ['telegram-ai-booking', 'wechat-bridge', 'booking-conflict-detection', 'booking-status-workflow', 'timeout-handling']
   });
 });
 
@@ -238,6 +238,11 @@ async function runMigrations(maxRetries = 5) {
         'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_code VARCHAR(50)',
         'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS ai_session_id INTEGER',
         'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_time VARCHAR(20)',
+        // 新功能：衝突檢測 & 狀態流程
+        'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS has_conflict BOOLEAN DEFAULT FALSE',
+        'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS timeout_notified BOOLEAN DEFAULT FALSE',
+        'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS status_changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+        'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancel_reason TEXT',
         // no_shows 表
         'ALTER TABLE no_shows ADD COLUMN IF NOT EXISTS therapist_notes TEXT',
         'ALTER TABLE no_shows ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP',
@@ -314,6 +319,15 @@ async function startServer() {
     const server = app.listen(PORT, () => {
       console.log(`✅ 伺服器運行在 http://localhost:${PORT}`);
     });
+
+    // 啟動定時任務（超時處理 & 衝突檢測）
+    try {
+      const SchedulerService = require('./services/schedulerService');
+      SchedulerService.init();
+    } catch (schedulerError) {
+      console.error('❌ 定時任務初始化失敗:', schedulerError.message);
+      logger.error('定時任務初始化失敗', { error: schedulerError.message });
+    }
 
     // 啟動 Telegram AI 預約 Bot（polling 模式）
     try {

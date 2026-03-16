@@ -4,29 +4,33 @@ const Therapist = require('../models/therapist');
 const Location = require('../models/location');
 const NoShow = require('../models/noshow');
 const logger = require('../utils/logger');
-const wechatUtil = require('../utils/wechat');
 const telegramUtil = require('../utils/telegram');
 
+let wechatUtil;
+try {
+  wechatUtil = require('../utils/wechat');
+} catch (e) {
+  wechatUtil = null;
+}
+
 class BookingService {
+
+  // ========== 創建預約（含衝突檢測） ==========
+
   static async createBooking(customerId, therapistId, locationId, bookingDate, timeSlot, timeOption) {
     try {
-      // 檢查時間是否已被預約
-      const existingBooking = await Booking.getAll({
-        status: Booking.STATUS.WAITING_SERVICE,
-        bookingDate,
-      });
-
-      const conflict = existingBooking.some(
-        b => b.therapist_id === therapistId && 
-             b.time_slot === timeSlot && 
-             b.time_option === timeOption
-      );
+      // 1. 衝突檢測：檢查該技師在該時段是否已有活躍預約
+      const conflict = await Booking.checkConflict(therapistId, bookingDate, timeSlot, timeOption);
 
       if (conflict) {
-        throw new Error('該時間已被預約');
+        const therapist = await Therapist.getById(therapistId);
+        const therapistName = therapist ? therapist.name : `技師 #${therapistId}`;
+        throw new Error(
+          `預約衝突：${therapistName} 在 ${bookingDate} ${this.getTimeSlotLabel(timeSlot)} ${timeOption} 時段已有預約（預約 #${conflict.id}，狀態：${Booking.STATUS_LABELS[conflict.status] || conflict.status}）`
+        );
       }
 
-      // 創建預約
+      // 2. 創建預約（初始狀態為 pending）
       const booking = await Booking.create(
         customerId,
         therapistId,
@@ -36,22 +40,22 @@ class BookingService {
         timeOption
       );
 
-      // 獲取詳細信息
+      // 3. 獲取詳細信息
       const bookingDetails = await Booking.getById(booking.id);
       const therapist = await Therapist.getById(therapistId);
       const customer = await Customer.getById(customerId);
 
-      // 獲取客戶與該技師的預約次數
+      // 4. 獲取客戶與該技師的預約次數
       const bookingCountWithTherapist = await Therapist.getBookingCountWithCustomer(therapistId, customerId);
 
-      // 獲取客戶的總爽約次數
+      // 5. 獲取客戶的總爽約次數
       const totalNoShowCount = await NoShow.getCountByCustomer(customerId);
 
-      // 發送企業微信通知給技師（通過外部聯繫人）
-      if (therapist.external_user_id) {
+      // 6. 發送企業微信通知給技師
+      if (wechatUtil && therapist && therapist.external_user_id) {
         const notificationData = {
           bookingId: booking.id,
-          customerName: customer.name || `用戶 ${customerId}`,
+          customerName: customer ? (customer.name || `用戶 ${customerId}`) : `用戶 ${customerId}`,
           locationName: bookingDetails.location_name,
           bookingDate: bookingDate,
           timeSlot: this.getTimeSlotLabel(timeSlot),
@@ -75,13 +79,23 @@ class BookingService {
     }
   }
 
+  // ========== 狀態流轉操作 ==========
+
+  /**
+   * 確認預約（技師確認）：pending → confirmed
+   */
   static async confirmBooking(bookingId, therapistId) {
     try {
       const booking = await Booking.getById(bookingId);
       if (!booking) throw new Error('預約不存在');
       if (booking.therapist_id !== therapistId) throw new Error('無權確認此預約');
 
-      await Booking.updateStatus(bookingId, Booking.STATUS.WAITING_SERVICE);
+      // 使用新狀態或兼容舊狀態
+      const newStatus = (booking.status === 'waiting_therapist') 
+        ? Booking.STATUS.WAITING_SERVICE 
+        : Booking.STATUS.CONFIRMED;
+
+      await Booking.updateStatus(bookingId, newStatus);
       await Booking.markTherapistResponse(bookingId);
 
       try {
@@ -104,13 +118,62 @@ class BookingService {
     }
   }
 
+  /**
+   * 開始服務：confirmed → in_progress
+   */
+  static async startService(bookingId) {
+    try {
+      const booking = await Booking.getById(bookingId);
+      if (!booking) throw new Error('預約不存在');
+
+      if (booking.status !== 'confirmed' && booking.status !== 'waiting_service') {
+        throw new Error(`無法開始服務：當前狀態為 "${Booking.STATUS_LABELS[booking.status] || booking.status}"`);
+      }
+
+      await Booking.updateStatus(bookingId, Booking.STATUS.IN_PROGRESS);
+      logger.info('服務已開始', { bookingId });
+      return await Booking.getById(bookingId);
+    } catch (error) {
+      logger.error('開始服務失敗', { error: error.message, bookingId });
+      throw error;
+    }
+  }
+
+  /**
+   * 完成服務：in_progress → completed
+   */
+  static async completeBooking(bookingId) {
+    try {
+      const booking = await Booking.getById(bookingId);
+      if (!booking) throw new Error('預約不存在');
+
+      if (booking.status !== 'in_progress' && booking.status !== 'waiting_service' && booking.status !== 'confirmed') {
+        throw new Error(`無法完成服務：當前狀態為 "${Booking.STATUS_LABELS[booking.status] || booking.status}"`);
+      }
+
+      await Booking.updateStatus(bookingId, Booking.STATUS.COMPLETED);
+      logger.info('服務已完成', { bookingId });
+      return await Booking.getById(bookingId);
+    } catch (error) {
+      logger.error('完成服務失敗', { error: error.message, bookingId });
+      throw error;
+    }
+  }
+
+  /**
+   * 拒絕預約（技師）
+   */
   static async rejectBooking(bookingId, therapistId) {
     try {
       const booking = await Booking.getById(bookingId);
       if (!booking) throw new Error('預約不存在');
       if (booking.therapist_id !== therapistId) throw new Error('無權拒絕此預約');
 
-      await Booking.updateStatus(bookingId, Booking.STATUS.THERAPIST_CANCELLED);
+      const newStatus = (booking.status === 'waiting_therapist')
+        ? Booking.STATUS.THERAPIST_CANCELLED
+        : Booking.STATUS.CANCELLED;
+
+      await Booking.updateStatus(bookingId, newStatus, '技師拒絕');
       await Booking.markTherapistResponse(bookingId);
 
       try {
@@ -131,11 +194,20 @@ class BookingService {
     }
   }
 
-  static async cancelBooking(bookingId, customerId) {
+  /**
+   * 取消預約
+   */
+  static async cancelBooking(bookingId, customerId, reason = null) {
     try {
       const booking = await Booking.getById(bookingId);
       if (!booking) throw new Error('預約不存在');
       if (booking.customer_id !== customerId) throw new Error('無權取消此預約');
+
+      // 檢查是否在可取消的狀態
+      const cancellableStatuses = ['pending', 'confirmed', 'waiting_therapist', 'waiting_service'];
+      if (!cancellableStatuses.includes(booking.status)) {
+        throw new Error(`當前狀態 "${Booking.STATUS_LABELS[booking.status] || booking.status}" 無法取消`);
+      }
 
       const bookingDateTime = new Date(`${booking.booking_date}T12:00:00`);
       const now = new Date();
@@ -145,7 +217,7 @@ class BookingService {
         throw new Error('預約前 1 小時內無法取消');
       }
 
-      await Booking.updateStatus(bookingId, Booking.STATUS.THERAPIST_CANCELLED);
+      await Booking.updateStatus(bookingId, Booking.STATUS.CANCELLED, reason || '客戶取消');
       logger.info('預約已取消', { bookingId, customerId });
     } catch (error) {
       logger.error('取消預約失敗', { error: error.message, bookingId });
@@ -153,6 +225,32 @@ class BookingService {
     }
   }
 
+  /**
+   * 管理員手動更改狀態
+   */
+  static async adminUpdateStatus(bookingId, newStatus, reason = null) {
+    try {
+      const booking = await Booking.getById(bookingId);
+      if (!booking) throw new Error('預約不存在');
+
+      // 管理員可以強制更改任何狀態
+      const validStatuses = Object.values(Booking.STATUS);
+      if (!validStatuses.includes(newStatus)) {
+        throw new Error(`無效的狀態: ${newStatus}`);
+      }
+
+      await Booking.updateStatus(bookingId, newStatus, reason);
+      logger.info('管理員更新預約狀態', { bookingId, newStatus, reason });
+      return await Booking.getById(bookingId);
+    } catch (error) {
+      logger.error('管理員更新狀態失敗', { error: error.message, bookingId });
+      throw error;
+    }
+  }
+
+  /**
+   * 標記爽約
+   */
   static async markNoShow(bookingId, reason = null) {
     try {
       const booking = await Booking.getById(bookingId);
@@ -167,7 +265,7 @@ class BookingService {
         'admin'
       );
 
-      await Booking.updateStatus(bookingId, Booking.STATUS.CUSTOMER_NO_SHOW);
+      await Booking.updateStatus(bookingId, Booking.STATUS.NO_SHOW, reason);
 
       logger.info('爽約記錄已創建', { bookingId, customerId: booking.customer_id });
       return noShow;
@@ -176,6 +274,58 @@ class BookingService {
       throw error;
     }
   }
+
+  // ========== 超時處理 ==========
+
+  /**
+   * 處理超時未回覆的預約（由定時任務調用）
+   */
+  static async handleTimeoutBookings() {
+    try {
+      const timedOutBookings = await Booking.getTimedOutBookings();
+
+      if (timedOutBookings.length === 0) {
+        return { processed: 0 };
+      }
+
+      let notifiedCount = 0;
+
+      for (const booking of timedOutBookings) {
+        try {
+          // 發送超時通知給客戶
+          if (booking.telegram_id) {
+            try {
+              await telegramUtil.sendMessage(booking.telegram_id,
+                `⏰ 您的預約 #${booking.id} 提醒：\n\n` +
+                `技師 ${booking.therapist_name || '未知'} 暫時未回覆您的預約請求。\n` +
+                `預約日期：${booking.booking_date}\n` +
+                `時段：${this.getTimeSlotLabel(booking.time_slot)} ${booking.time_option}\n\n` +
+                `請稍後再試或選擇其他技師。如有疑問請聯繫客服。`
+              );
+            } catch (sendError) {
+              logger.error('發送超時通知失敗', { error: sendError.message, bookingId: booking.id });
+            }
+          }
+
+          // 標記已通知
+          await Booking.markTimeoutNotified(booking.id);
+          notifiedCount++;
+
+          logger.info('超時通知已發送', { bookingId: booking.id, customerId: booking.customer_id });
+        } catch (error) {
+          logger.error('處理超時預約失敗', { error: error.message, bookingId: booking.id });
+        }
+      }
+
+      logger.info('超時處理完成', { total: timedOutBookings.length, notified: notifiedCount });
+      return { processed: timedOutBookings.length, notified: notifiedCount };
+    } catch (error) {
+      logger.error('超時處理批次失敗', { error: error.message });
+      throw error;
+    }
+  }
+
+  // ========== 工具方法 ==========
 
   static getTimeSlotLabel(timeSlot) {
     const labels = {
@@ -193,15 +343,23 @@ class BookingService {
 
       const stats = {
         totalBookings: bookings.length,
-        waitingTherapist: bookings.filter(b => b.status === Booking.STATUS.WAITING_THERAPIST).length,
-        waitingService: bookings.filter(b => b.status === Booking.STATUS.WAITING_SERVICE).length,
-        completed: bookings.filter(b => b.status === Booking.STATUS.COMPLETED).length,
-        customerNoShow: bookings.filter(b => b.status === Booking.STATUS.CUSTOMER_NO_SHOW).length,
-        therapistCancelled: bookings.filter(b => b.status === Booking.STATUS.THERAPIST_CANCELLED).length,
-        therapistNoShow: bookings.filter(b => b.status === Booking.STATUS.THERAPIST_NO_SHOW).length,
+        // 新狀態統計
+        pending: bookings.filter(b => b.status === 'pending').length,
+        confirmed: bookings.filter(b => b.status === 'confirmed').length,
+        inProgress: bookings.filter(b => b.status === 'in_progress').length,
+        completed: bookings.filter(b => b.status === 'completed').length,
+        cancelled: bookings.filter(b => b.status === 'cancelled').length,
+        noShow: bookings.filter(b => b.status === 'no_show').length,
+        conflicts: bookings.filter(b => b.has_conflict).length,
+        // 向後兼容舊狀態
+        waitingTherapist: bookings.filter(b => b.status === 'waiting_therapist' || b.status === 'pending').length,
+        waitingService: bookings.filter(b => b.status === 'waiting_service' || b.status === 'confirmed').length,
+        customerNoShow: bookings.filter(b => b.status === 'customer_no_show' || b.status === 'no_show').length,
+        therapistCancelled: bookings.filter(b => b.status === 'therapist_cancelled').length,
+        therapistNoShow: bookings.filter(b => b.status === 'therapist_no_show').length,
         // 向後兼容
-        confirmedBookings: bookings.filter(b => b.status === Booking.STATUS.WAITING_SERVICE).length,
-        pendingBookings: bookings.filter(b => b.status === Booking.STATUS.WAITING_THERAPIST).length,
+        confirmedBookings: bookings.filter(b => ['waiting_service', 'confirmed'].includes(b.status)).length,
+        pendingBookings: bookings.filter(b => ['waiting_therapist', 'pending'].includes(b.status)).length,
       };
 
       return stats;

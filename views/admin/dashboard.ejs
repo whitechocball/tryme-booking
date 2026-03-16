@@ -14,7 +14,7 @@
     <div class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <h1>Tryme</h1>
-        <span class="version-tag">v1.0 | 2026-03-15</span>
+        <span class="version-tag">v1.1 | 2026-03-16</span>
       </div>
       <nav>
         <ul>
@@ -39,9 +39,9 @@
       <div class="content-section" style="margin-bottom:24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
         <div>
           <strong style="font-size:16px; color:#1a1a2e;">Tryme 預約管理系統</strong>
-          <span style="background:#dbeafe; color:#1e40af; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; margin-left:8px;">v1.0</span>
+          <span style="background:#dbeafe; color:#1e40af; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; margin-left:8px;">v1.1</span>
         </div>
-        <div style="color:#6b7280; font-size:13px;">發佈日期：2026-03-15</div>
+        <div style="color:#6b7280; font-size:13px;">發佈日期：2026-03-16 | 新增：衝突檢測 & 狀態流程</div>
       </div>
 
       <!-- 統計卡片 -->
@@ -51,12 +51,20 @@
           <div class="number" id="today-bookings">0</div>
         </div>
         <div class="stat-card">
-          <h3>等待技師回覆</h3>
+          <h3>待確認</h3>
           <div class="number" id="waiting-therapist">0</div>
         </div>
         <div class="stat-card">
-          <h3>等待進入服務</h3>
+          <h3>已確認</h3>
           <div class="number" id="waiting-service">0</div>
+        </div>
+        <div class="stat-card">
+          <h3>進行中</h3>
+          <div class="number" id="in-progress">0</div>
+        </div>
+        <div class="stat-card">
+          <h3>衝突預約</h3>
+          <div class="number" id="conflicts" style="color:#dc2626;">0</div>
         </div>
         <div class="stat-card">
           <h3>爽約記錄</h3>
@@ -87,13 +95,11 @@
   </div>
 
   <script>
-    // 側邊欄切換
     function toggleSidebar() {
       document.getElementById('sidebar').classList.toggle('open');
       document.getElementById('sidebarOverlay').classList.toggle('show');
     }
 
-    // 更新時間
     function updateTime() {
       const now = new Date();
       document.getElementById('current-time').textContent = now.toLocaleString('zh-Hant-TW');
@@ -101,22 +107,20 @@
     updateTime();
     setInterval(updateTime, 1000);
 
-    // 狀態映射
     const STATUS_MAP = {
+      'pending': '待確認',
+      'confirmed': '技師已確認',
+      'in_progress': '進行中',
+      'completed': '已完成',
+      'cancelled': '已取消',
+      'no_show': '爽約',
       'waiting_therapist': '等待技師回覆',
       'waiting_service': '等待進入服務',
-      'completed': '已完成服務',
       'customer_no_show': '客戶爽約',
       'therapist_cancelled': '技師取消',
       'therapist_no_show': '技師爽約',
-      // 向後兼容
-      'pending': '待處理',
-      'confirmed': '已確認',
-      'rejected': '已拒絕',
-      'cancelled': '已取消',
     };
 
-    // 加載統計
     async function loadStats() {
       try {
         const today = new Date().toISOString().split('T')[0];
@@ -125,12 +129,13 @@
         document.getElementById('today-bookings').textContent = stats.totalBookings || 0;
         document.getElementById('waiting-therapist').textContent = stats.waitingTherapist || stats.pendingBookings || 0;
         document.getElementById('waiting-service').textContent = stats.waitingService || stats.confirmedBookings || 0;
+        document.getElementById('in-progress').textContent = stats.inProgress || 0;
+        document.getElementById('conflicts').textContent = stats.conflicts || 0;
       } catch (e) {
         console.error('加載統計失敗:', e);
       }
     }
 
-    // 加載爽約數
     async function loadNoShowCount() {
       try {
         const response = await fetch('/api/noshows');
@@ -141,9 +146,7 @@
       }
     }
 
-    // 加載排名
     async function loadRanking(days, btnEl) {
-      // 更新按鈕狀態
       document.querySelectorAll('#ranking-tabs .btn').forEach(b => b.classList.remove('active'));
       if (btnEl) btnEl.classList.add('active');
 
@@ -163,11 +166,10 @@
         ranking.forEach((item, idx) => {
           const rankClass = idx === 0 ? 'top-1' : idx === 1 ? 'top-2' : idx === 2 ? 'top-3' : 'normal';
           const locationInfo = item.location_name ? (item.location_code + ' ' + item.location_name) : '';
-          const numberInfo = '';
           html += '<li class="ranking-item">';
           html += '  <div class="ranking-rank ' + rankClass + '">' + (idx + 1) + '</div>';
           html += '  <div class="ranking-info">';
-          html += '    <div class="ranking-name">' + item.therapist_name + numberInfo + '</div>';
+          html += '    <div class="ranking-name">' + item.therapist_name + '</div>';
           html += '    <div class="ranking-location">' + locationInfo + '</div>';
           html += '  </div>';
           html += '  <div style="text-align:right;">';
@@ -184,7 +186,6 @@
       }
     }
 
-    // 加載最近預約
     async function loadRecentBookings() {
       try {
         const response = await fetch('/api/bookings');
@@ -204,12 +205,12 @@
           const displayId = b.booking_code || b.id;
           const statusLabel = STATUS_MAP[b.status] || b.status;
           const statusClass = 'status-' + b.status;
-          const therapistInfo = b.therapist_name;
+          const conflictMark = b.has_conflict ? ' <span style="color:#dc2626; font-size:11px; font-weight:600;">[衝突]</span>' : '';
 
-          html += '<tr>';
-          html += '<td>' + displayId + '</td>';
+          html += '<tr' + (b.has_conflict ? ' style="background:#fef2f2;"' : '') + '>';
+          html += '<td>' + displayId + conflictMark + '</td>';
           html += '<td>' + (b.customer_name || 'TG:' + (b.telegram_id || '未知')) + '</td>';
-          html += '<td>' + therapistInfo + '</td>';
+          html += '<td>' + (b.therapist_name || '未知') + '</td>';
           html += '<td>' + (b.booking_date || '') + '</td>';
           html += '<td><span class="status-badge ' + statusClass + '">' + statusLabel + '</span></td>';
           html += '</tr>';
@@ -229,7 +230,6 @@
     loadRanking(30, null);
     loadRecentBookings();
 
-    // 每 30 秒刷新
     setInterval(() => {
       loadStats();
       loadNoShowCount();

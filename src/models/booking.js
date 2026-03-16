@@ -1,23 +1,48 @@
 const db = require('../utils/db');
 const logger = require('../utils/logger');
 
-// 新的狀態定義
+// ========== 新的狀態定義（完整流程） ==========
 const BOOKING_STATUS = {
-  WAITING_THERAPIST: 'waiting_therapist',   // 等待技師回覆
-  WAITING_SERVICE: 'waiting_service',       // 等待進入服務
-  COMPLETED: 'completed',                   // 已完成服務
-  CUSTOMER_NO_SHOW: 'customer_no_show',     // 客戶爽約
-  THERAPIST_CANCELLED: 'therapist_cancelled', // 技師取消
-  THERAPIST_NO_SHOW: 'therapist_no_show',   // 技師爽約
+  PENDING: 'pending',                       // 待確認（新預約）
+  CONFIRMED: 'confirmed',                   // 技師已確認
+  IN_PROGRESS: 'in_progress',               // 進行中
+  COMPLETED: 'completed',                   // 已完成
+  CANCELLED: 'cancelled',                   // 已取消
+  NO_SHOW: 'no_show',                       // 爽約
+  // 向後兼容舊狀態
+  WAITING_THERAPIST: 'waiting_therapist',
+  WAITING_SERVICE: 'waiting_service',
+  CUSTOMER_NO_SHOW: 'customer_no_show',
+  THERAPIST_CANCELLED: 'therapist_cancelled',
+  THERAPIST_NO_SHOW: 'therapist_no_show',
 };
 
 const STATUS_LABELS = {
+  'pending': '待確認',
+  'confirmed': '技師已確認',
+  'in_progress': '進行中',
+  'completed': '已完成',
+  'cancelled': '已取消',
+  'no_show': '爽約',
+  // 向後兼容
   'waiting_therapist': '等待技師回覆',
   'waiting_service': '等待進入服務',
-  'completed': '已完成服務',
   'customer_no_show': '客戶爽約',
   'therapist_cancelled': '技師取消',
   'therapist_no_show': '技師爽約',
+};
+
+// 活躍狀態（用於衝突檢測）
+const ACTIVE_STATUSES = ['pending', 'confirmed', 'in_progress', 'waiting_therapist', 'waiting_service'];
+
+// 合法的狀態流轉
+const VALID_TRANSITIONS = {
+  'pending': ['confirmed', 'cancelled', 'no_show'],
+  'confirmed': ['in_progress', 'cancelled', 'no_show'],
+  'in_progress': ['completed', 'cancelled', 'no_show'],
+  // 向後兼容
+  'waiting_therapist': ['waiting_service', 'therapist_cancelled', 'customer_no_show', 'confirmed', 'cancelled'],
+  'waiting_service': ['completed', 'therapist_cancelled', 'customer_no_show', 'in_progress', 'cancelled'],
 };
 
 /**
@@ -34,12 +59,89 @@ function generateBookingCode() {
 }
 
 class Booking {
+
+  // ========== 衝突檢測 ==========
+
+  /**
+   * 檢查技師在指定日期和時段是否有衝突
+   * @returns {object|null} 衝突的預約，或 null 表示無衝突
+   */
+  static async checkConflict(therapistId, bookingDate, timeSlot, timeOption, excludeBookingId = null) {
+    try {
+      let query = `
+        SELECT b.id, b.customer_id, b.therapist_id, b.booking_date, b.time_slot, b.time_option, b.status,
+               c.name as customer_name, t.name as therapist_name
+        FROM bookings b
+        LEFT JOIN customers c ON b.customer_id = c.id
+        LEFT JOIN therapists t ON b.therapist_id = t.id
+        WHERE b.therapist_id = $1
+          AND b.booking_date = $2
+          AND b.time_slot = $3
+          AND b.time_option = $4
+          AND b.status = ANY($5)
+      `;
+      const params = [therapistId, bookingDate, timeSlot, timeOption, ACTIVE_STATUSES];
+
+      if (excludeBookingId) {
+        query += ' AND b.id != $6';
+        params.push(excludeBookingId);
+      }
+
+      query += ' LIMIT 1';
+
+      const result = await db.query(query, params);
+      return result.rows[0] || null;
+    } catch (error) {
+      logger.error('衝突檢測失敗', { error: error.message, therapistId, bookingDate });
+      throw error;
+    }
+  }
+
+  /**
+   * 批量檢測所有預約的衝突狀態，並更新 has_conflict 標記
+   */
+  static async detectAllConflicts() {
+    try {
+      // 先重置所有衝突標記
+      await db.query('UPDATE bookings SET has_conflict = FALSE WHERE has_conflict = TRUE');
+
+      // 找出所有活躍狀態中有衝突的預約（同一技師、同一日期、同一時段有多個活躍預約）
+      const conflictQuery = `
+        WITH conflict_groups AS (
+          SELECT therapist_id, booking_date, time_slot, time_option
+          FROM bookings
+          WHERE status = ANY($1)
+          GROUP BY therapist_id, booking_date, time_slot, time_option
+          HAVING COUNT(*) > 1
+        )
+        UPDATE bookings b
+        SET has_conflict = TRUE
+        FROM conflict_groups cg
+        WHERE b.therapist_id = cg.therapist_id
+          AND b.booking_date = cg.booking_date
+          AND b.time_slot = cg.time_slot
+          AND b.time_option = cg.time_option
+          AND b.status = ANY($1)
+        RETURNING b.id
+      `;
+
+      const result = await db.query(conflictQuery, [ACTIVE_STATUSES]);
+      logger.info('衝突檢測完成', { conflictCount: result.rows.length });
+      return result.rows.map(r => r.id);
+    } catch (error) {
+      logger.error('批量衝突檢測失敗', { error: error.message });
+      throw error;
+    }
+  }
+
+  // ========== CRUD ==========
+
   static async create(customerId, therapistId, locationId, bookingDate, timeSlot, timeOption) {
     try {
       const result = await db.query(
-        `INSERT INTO bookings (customer_id, therapist_id, location_id, booking_date, time_slot, time_option, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [customerId, therapistId, locationId, bookingDate, timeSlot, timeOption, BOOKING_STATUS.WAITING_THERAPIST]
+        `INSERT INTO bookings (customer_id, therapist_id, location_id, booking_date, time_slot, time_option, status, status_changed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP) RETURNING *`,
+        [customerId, therapistId, locationId, bookingDate, timeSlot, timeOption, BOOKING_STATUS.PENDING]
       );
       logger.info('新預約已創建', { customerId, therapistId, bookingDate, bookingId: result.rows[0]?.id });
       return result.rows[0];
@@ -52,7 +154,10 @@ class Booking {
   static async getById(bookingId) {
     try {
       const result = await db.query(
-        `SELECT b.id, b.customer_id, b.therapist_id, b.location_id, b.booking_date, b.time_slot, b.time_option, b.status, b.therapist_response_at, b.created_at, b.updated_at,
+        `SELECT b.id, b.customer_id, b.therapist_id, b.location_id, b.booking_date, 
+                b.time_slot, b.time_option, b.status, b.therapist_response_at, 
+                b.created_at, b.updated_at, b.has_conflict, b.timeout_notified,
+                b.status_changed_at, b.cancel_reason,
                 c.name as customer_name, c.telegram_id,
                 t.id as therapist_id, t.name as therapist_name,
                 l.name as location_name, l.code as location_code
@@ -73,7 +178,9 @@ class Booking {
   static async getByCustomer(customerId) {
     try {
       const result = await db.query(
-        `SELECT b.id, b.customer_id, b.therapist_id, b.location_id, b.booking_date, b.time_slot, b.time_option, b.status, b.therapist_response_at, b.created_at, b.updated_at,
+        `SELECT b.id, b.customer_id, b.therapist_id, b.location_id, b.booking_date, 
+                b.time_slot, b.time_option, b.status, b.therapist_response_at, 
+                b.created_at, b.updated_at, b.has_conflict,
                 c.name as customer_name, c.telegram_id,
                 t.id as therapist_id, t.name as therapist_name,
                 l.name as location_name, l.code as location_code
@@ -95,7 +202,9 @@ class Booking {
   static async getByTherapist(therapistId) {
     try {
       const result = await db.query(
-        `SELECT b.id, b.customer_id, b.therapist_id, b.location_id, b.booking_date, b.time_slot, b.time_option, b.status, b.therapist_response_at, b.created_at, b.updated_at,
+        `SELECT b.id, b.customer_id, b.therapist_id, b.location_id, b.booking_date, 
+                b.time_slot, b.time_option, b.status, b.therapist_response_at, 
+                b.created_at, b.updated_at, b.has_conflict,
                 c.name as customer_name, c.telegram_id,
                 t.id as therapist_id, t.name as therapist_name,
                 l.name as location_name, l.code as location_code
@@ -118,10 +227,12 @@ class Booking {
     try {
       let query = `SELECT b.id, b.customer_id, b.therapist_id, b.location_id, b.booking_date, 
                           b.time_slot, b.time_option, b.status, b.therapist_response_at, 
-                          b.created_at, b.updated_at,
+                          b.created_at, b.updated_at, b.has_conflict, b.timeout_notified,
+                          b.status_changed_at, b.cancel_reason,
                           c.name as customer_name, c.telegram_id,
-                          t.id as therapist_id, t.name as therapist_name,
-                          l.name as location_name, l.code as location_code
+                          t.id as t_id, t.name as therapist_name, t.display_number,
+                          t.profile_pic_url, t.work_start_time, t.work_end_time,
+                          l.name as location_name, l.code as location_code, l.id as loc_id
                    FROM bookings b
                    LEFT JOIN customers c ON b.customer_id = c.id
                    LEFT JOIN therapists t ON b.therapist_id = t.id
@@ -143,6 +254,22 @@ class Booking {
         paramCount++;
       }
 
+      if (filters.therapistId) {
+        conditions.push(`b.therapist_id = $${paramCount}`);
+        params.push(filters.therapistId);
+        paramCount++;
+      }
+
+      if (filters.locationId) {
+        conditions.push(`b.location_id = $${paramCount}`);
+        params.push(filters.locationId);
+        paramCount++;
+      }
+
+      if (filters.hasConflict) {
+        conditions.push(`b.has_conflict = TRUE`);
+      }
+
       if (conditions.length > 0) {
         query += ' WHERE ' + conditions.join(' AND ');
       }
@@ -157,16 +284,45 @@ class Booking {
     }
   }
 
-  static async updateStatus(bookingId, status) {
+  // ========== 狀態管理 ==========
+
+  static async updateStatus(bookingId, status, cancelReason = null) {
     try {
-      const result = await db.query(
-        'UPDATE bookings SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
-        [status, bookingId]
-      );
+      let query, params;
+      if (cancelReason) {
+        query = 'UPDATE bookings SET status = $1, cancel_reason = $3, status_changed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *';
+        params = [status, bookingId, cancelReason];
+      } else {
+        query = 'UPDATE bookings SET status = $1, status_changed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *';
+        params = [status, bookingId];
+      }
+      const result = await db.query(query, params);
       logger.info('預約狀態已更新', { bookingId, status });
       return result.rows[0];
     } catch (error) {
       logger.error('更新預約狀態失敗', { error: error.message, bookingId });
+      throw error;
+    }
+  }
+
+  /**
+   * 帶狀態流轉驗證的狀態更新
+   */
+  static async transitionStatus(bookingId, newStatus, cancelReason = null) {
+    try {
+      const booking = await this.getById(bookingId);
+      if (!booking) throw new Error('預約不存在');
+
+      const currentStatus = booking.status;
+      const allowed = VALID_TRANSITIONS[currentStatus];
+
+      if (allowed && !allowed.includes(newStatus)) {
+        throw new Error(`無法從 "${STATUS_LABELS[currentStatus] || currentStatus}" 轉為 "${STATUS_LABELS[newStatus] || newStatus}"`);
+      }
+
+      return await this.updateStatus(bookingId, newStatus, cancelReason);
+    } catch (error) {
+      logger.error('狀態流轉失敗', { error: error.message, bookingId, newStatus });
       throw error;
     }
   }
@@ -184,14 +340,62 @@ class Booking {
     }
   }
 
-  static async cancel(bookingId) {
-    return await this.updateStatus(bookingId, BOOKING_STATUS.THERAPIST_CANCELLED);
+  static async cancel(bookingId, reason = null) {
+    return await this.updateStatus(bookingId, BOOKING_STATUS.CANCELLED, reason);
   }
+
+  // ========== 超時處理 ==========
+
+  /**
+   * 獲取超過 30 分鐘未回覆的 pending 預約
+   */
+  static async getTimedOutBookings() {
+    try {
+      const result = await db.query(
+        `SELECT b.id, b.customer_id, b.therapist_id, b.booking_date, b.time_slot, b.time_option,
+                b.status, b.created_at, b.timeout_notified,
+                c.name as customer_name, c.telegram_id,
+                t.name as therapist_name
+         FROM bookings b
+         LEFT JOIN customers c ON b.customer_id = c.id
+         LEFT JOIN therapists t ON b.therapist_id = t.id
+         WHERE b.status IN ('pending', 'waiting_therapist')
+           AND b.therapist_response_at IS NULL
+           AND b.timeout_notified = FALSE
+           AND b.created_at < NOW() - INTERVAL '30 minutes'
+         ORDER BY b.created_at ASC`
+      );
+      return result.rows;
+    } catch (error) {
+      logger.error('查詢超時預約失敗', { error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * 標記預約已發送超時通知
+   */
+  static async markTimeoutNotified(bookingId) {
+    try {
+      const result = await db.query(
+        'UPDATE bookings SET timeout_notified = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
+        [bookingId]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('標記超時通知失敗', { error: error.message, bookingId });
+      throw error;
+    }
+  }
+
+  // ========== 查詢 ==========
 
   static async getByDateRange(startDate, endDate) {
     try {
       const result = await db.query(
-        `SELECT b.id, b.customer_id, b.therapist_id, b.location_id, b.booking_date, b.time_slot, b.time_option, b.status, b.therapist_response_at, b.created_at, b.updated_at,
+        `SELECT b.id, b.customer_id, b.therapist_id, b.location_id, b.booking_date, 
+                b.time_slot, b.time_option, b.status, b.therapist_response_at, 
+                b.created_at, b.updated_at, b.has_conflict,
                 c.name as customer_name, c.telegram_id,
                 t.id as therapist_id, t.name as therapist_name,
                 l.name as location_name, l.code as location_code
@@ -212,7 +416,6 @@ class Booking {
 
   /**
    * 獲取技師預約排名（指定天數範圍）
-   * 注意：不包含 display_number 在 SELECT 和 GROUP BY 中，因為該欄位可能不存在
    */
   static async getTherapistRanking(days = 30) {
     try {
@@ -224,7 +427,7 @@ class Booking {
          JOIN therapists t ON b.therapist_id = t.id
          LEFT JOIN locations l ON t.location_id = l.id
          WHERE b.created_at >= NOW() - INTERVAL '1 day' * $1
-           AND b.status NOT IN ('therapist_cancelled')
+           AND b.status NOT IN ('therapist_cancelled', 'cancelled')
          GROUP BY t.id, t.name, l.name, l.code
          ORDER BY booking_count DESC`,
         [days]
@@ -239,5 +442,7 @@ class Booking {
 
 Booking.STATUS = BOOKING_STATUS;
 Booking.STATUS_LABELS = STATUS_LABELS;
+Booking.ACTIVE_STATUSES = ACTIVE_STATUSES;
+Booking.VALID_TRANSITIONS = VALID_TRANSITIONS;
 
 module.exports = Booking;
