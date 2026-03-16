@@ -149,6 +149,7 @@
     .selection-info {
       font-size: 13px;
       color: #6b7280;
+      flex: 1;
     }
 
     .selection-info strong {
@@ -158,6 +159,7 @@
     .action-buttons {
       display: flex;
       gap: 8px;
+      flex-shrink: 0;
     }
 
     .btn-bind {
@@ -179,22 +181,6 @@
     .btn-bind:disabled {
       background: #d1d5db;
       cursor: not-allowed;
-    }
-
-    .btn-unbind {
-      background: #ef4444;
-      color: white;
-      padding: 8px 20px;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 600;
-      transition: all 0.2s;
-    }
-
-    .btn-unbind:hover {
-      background: #dc2626;
     }
 
     .btn-refresh {
@@ -349,6 +335,112 @@
       background: #f9fafb;
     }
 
+    /* IP 白名單警告 */
+    .ip-warning {
+      background: #fffbeb;
+      border: 1px solid #fbbf24;
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .ip-warning.show {
+      display: block;
+    }
+
+    .ip-warning h3 {
+      color: #92400e;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .ip-warning p {
+      color: #78350f;
+      font-size: 13px;
+      margin-bottom: 4px;
+      line-height: 1.6;
+    }
+
+    .ip-warning code {
+      background: #fef3c7;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+
+    /* 手動綁定表單 */
+    .manual-bind-section {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      padding: 20px;
+      margin-top: 20px;
+    }
+
+    .manual-bind-section h3 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .manual-bind-form {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .manual-bind-form .form-field {
+      flex: 1;
+      min-width: 180px;
+    }
+
+    .manual-bind-form label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #6b7280;
+      margin-bottom: 4px;
+    }
+
+    .manual-bind-form select,
+    .manual-bind-form input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+    }
+
+    .manual-bind-form select:focus,
+    .manual-bind-form input:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
+    }
+
+    .manual-bind-form .btn-manual-bind {
+      background: #10b981;
+      color: white;
+      padding: 8px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      height: 37px;
+    }
+
+    .manual-bind-form .btn-manual-bind:hover {
+      background: #059669;
+    }
+
     /* 響應式 */
     @media (max-width: 1024px) {
       .binding-layout {
@@ -361,8 +453,11 @@
 
     @media (max-width: 768px) {
       .stats-row {
-        flex-direction: column;
+        flex-wrap: wrap;
         gap: 8px;
+      }
+      .mini-stat {
+        min-width: calc(50% - 4px);
       }
       .binding-actions-bar {
         flex-direction: column;
@@ -370,6 +465,9 @@
       }
       .action-buttons {
         justify-content: center;
+      }
+      .manual-bind-form {
+        flex-direction: column;
       }
     }
   </style>
@@ -401,6 +499,13 @@
       <div class="page-header">
         <h1>企業微信綁定</h1>
         <div class="header-time" id="current-time"></div>
+      </div>
+
+      <!-- IP 白名單警告 -->
+      <div class="ip-warning" id="ip-warning">
+        <h3>&#9888; 企業微信 API 訪問受限</h3>
+        <p id="ip-warning-text"></p>
+        <p style="margin-top:8px;">您仍可使用下方的<strong>手動綁定</strong>功能，直接輸入企業微信 userid 完成綁定。</p>
       </div>
 
       <!-- 統計 -->
@@ -459,8 +564,31 @@
             <input type="text" class="search-box" id="wechat-search" placeholder="搜索成員名稱、userid..." oninput="filterWechatMembers()">
           </div>
           <div class="panel-body" id="wechat-panel">
-            <div class="loading-spinner">加載中...</div>
+            <div class="loading-spinner">正在從企業微信獲取成員列表...</div>
           </div>
+        </div>
+      </div>
+
+      <!-- 手動綁定區域 -->
+      <div class="manual-bind-section">
+        <h3>手動綁定</h3>
+        <p style="font-size:13px;color:#6b7280;margin-bottom:12px;">如果企業微信成員列表無法自動加載，可以在此手動輸入企業微信 userid 進行綁定。</p>
+        <div class="manual-bind-form">
+          <div class="form-field">
+            <label>選擇技師</label>
+            <select id="manual-therapist-select">
+              <option value="">-- 選擇技師 --</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>企業微信 userid</label>
+            <input type="text" id="manual-wechat-userid" placeholder="輸入企業微信 userid">
+          </div>
+          <div class="form-field">
+            <label>企業微信成員名稱（選填）</label>
+            <input type="text" id="manual-wechat-name" placeholder="輸入成員名稱">
+          </div>
+          <button class="btn-manual-bind" onclick="performManualBind()">手動綁定</button>
         </div>
       </div>
     </div>
@@ -476,6 +604,7 @@
     let selectedTherapistId = null;
     let selectedWechatUserid = null;
     let therapistFilter = 'all';
+    let wechatApiAvailable = false;
 
     // 側邊欄切換
     function toggleSidebar() {
@@ -492,21 +621,23 @@
     setInterval(updateTime, 1000);
 
     // Toast 通知
-    function showToast(message, type = 'success') {
-      const toast = document.getElementById('toast');
+    function showToast(message, type) {
+      type = type || 'success';
+      var toast = document.getElementById('toast');
       toast.textContent = message;
       toast.className = 'toast ' + type;
-      setTimeout(() => toast.classList.add('show'), 10);
-      setTimeout(() => toast.classList.remove('show'), 3000);
+      setTimeout(function() { toast.classList.add('show'); }, 10);
+      setTimeout(function() { toast.classList.remove('show'); }, 3000);
     }
 
     // 加載技師列表
     async function loadTherapists() {
       try {
-        const response = await fetch('/api/therapists');
+        var response = await fetch('/api/therapists');
         therapists = await response.json();
         renderTherapists();
         updateStats();
+        updateManualSelect();
       } catch (error) {
         document.getElementById('therapist-panel').innerHTML =
           '<div class="empty-state"><div class="icon">&#9888;</div><div>加載技師列表失敗</div></div>';
@@ -518,32 +649,49 @@
     async function loadWechatMembers() {
       document.getElementById('wechat-panel').innerHTML = '<div class="loading-spinner">正在從企業微信獲取成員列表...</div>';
       try {
-        const response = await fetch('/api/wechat/members');
-        const data = await response.json();
+        var response = await fetch('/api/wechat/members');
+        var data = await response.json();
+        
         if (data.success) {
           wechatMembers = data.members;
+          wechatApiAvailable = true;
+          document.getElementById('ip-warning').classList.remove('show');
           renderWechatMembers();
           document.getElementById('stat-wechat').textContent = wechatMembers.length;
+        } else if (data.error === 'IP_NOT_WHITELISTED') {
+          wechatApiAvailable = false;
+          wechatMembers = [];
+          document.getElementById('ip-warning-text').innerHTML = data.message;
+          document.getElementById('ip-warning').classList.add('show');
+          document.getElementById('wechat-panel').innerHTML =
+            '<div class="empty-state">' +
+            '<div class="icon">&#128274;</div>' +
+            '<div style="font-weight:600;margin-bottom:8px;">IP 白名單限制</div>' +
+            '<div style="font-size:12px;">服務器 IP <code>' + (data.serverIp || '未知') + '</code> 不在企業微信可信列表中</div>' +
+            '<div style="font-size:12px;margin-top:4px;">請使用下方的手動綁定功能</div>' +
+            '</div>';
+          document.getElementById('stat-wechat').textContent = '-';
         } else {
-          throw new Error(data.error);
+          throw new Error(data.error || '未知錯誤');
         }
       } catch (error) {
+        wechatApiAvailable = false;
         document.getElementById('wechat-panel').innerHTML =
-          '<div class="empty-state"><div class="icon">&#9888;</div><div>獲取企業微信成員失敗</div><div style="font-size:12px;margin-top:8px;color:#ef4444;">' + error.message + '</div></div>';
+          '<div class="empty-state"><div class="icon">&#9888;</div><div>獲取企業微信成員失敗</div><div style="font-size:12px;margin-top:8px;color:#ef4444;">' + escapeHtml(error.message) + '</div></div>';
         console.error('加載企業微信成員失敗:', error);
       }
     }
 
     // 渲染技師列表
     function renderTherapists() {
-      const searchTerm = document.getElementById('therapist-search').value.toLowerCase();
-      const panel = document.getElementById('therapist-panel');
+      var searchTerm = document.getElementById('therapist-search').value.toLowerCase();
+      var panel = document.getElementById('therapist-panel');
 
-      let filtered = therapists.filter(t => {
-        const matchSearch = !searchTerm ||
-          (t.name && t.name.toLowerCase().includes(searchTerm)) ||
-          (t.display_number && t.display_number.toLowerCase().includes(searchTerm)) ||
-          (t.location_name && t.location_name.toLowerCase().includes(searchTerm));
+      var filtered = therapists.filter(function(t) {
+        var matchSearch = !searchTerm ||
+          (t.name && t.name.toLowerCase().indexOf(searchTerm) >= 0) ||
+          (t.display_number && t.display_number.toLowerCase().indexOf(searchTerm) >= 0) ||
+          (t.location_name && t.location_name.toLowerCase().indexOf(searchTerm) >= 0);
 
         if (therapistFilter === 'bound') return matchSearch && t.wechat_userid;
         if (therapistFilter === 'unbound') return matchSearch && !t.wechat_userid;
@@ -555,13 +703,13 @@
         return;
       }
 
-      let html = '<ul class="member-list">';
-      filtered.forEach(t => {
-        const isBound = !!t.wechat_userid;
-        const isSelected = selectedTherapistId === t.id;
-        const boundWechatName = isBound ? getWechatNameByUserid(t.wechat_userid) : '';
+      var html = '<ul class="member-list">';
+      filtered.forEach(function(t) {
+        var isBound = !!t.wechat_userid;
+        var isSelected = selectedTherapistId === t.id;
+        var boundWechatName = isBound ? getWechatNameByUserid(t.wechat_userid) : '';
 
-        let classes = 'member-item';
+        var classes = 'member-item';
         if (isSelected) classes += ' selected';
         if (isBound) classes += ' bound';
 
@@ -581,7 +729,7 @@
         html += '  <div style="display:flex;align-items:center;gap:8px;">';
         if (isBound) {
           html += '<span class="binding-status bound">已綁定</span>';
-          html += '<button class="unbind-btn-inline" onclick="event.stopPropagation();performUnbind(' + t.id + ',\'' + escapeHtml(t.name) + '\')">解綁</button>';
+          html += '<button class="unbind-btn-inline" onclick="event.stopPropagation();performUnbind(' + t.id + ',\'' + escapeHtml(t.name).replace(/'/g, "\\'") + '\')">解綁</button>';
         } else {
           html += '<span class="binding-status unbound">未綁定</span>';
         }
@@ -594,17 +742,22 @@
 
     // 渲染企業微信成員列表
     function renderWechatMembers() {
-      const searchTerm = document.getElementById('wechat-search').value.toLowerCase();
-      const panel = document.getElementById('wechat-panel');
+      if (!wechatApiAvailable) return;
+
+      var searchTerm = document.getElementById('wechat-search').value.toLowerCase();
+      var panel = document.getElementById('wechat-panel');
 
       // 獲取已綁定的 userid 集合
-      const boundUserids = new Set(therapists.filter(t => t.wechat_userid).map(t => t.wechat_userid));
+      var boundUserids = {};
+      therapists.forEach(function(t) {
+        if (t.wechat_userid) boundUserids[t.wechat_userid] = t;
+      });
 
-      let filtered = wechatMembers.filter(m => {
+      var filtered = wechatMembers.filter(function(m) {
         return !searchTerm ||
-          (m.name && m.name.toLowerCase().includes(searchTerm)) ||
-          (m.userid && m.userid.toLowerCase().includes(searchTerm)) ||
-          (m.department && m.department.toLowerCase().includes(searchTerm));
+          (m.name && m.name.toLowerCase().indexOf(searchTerm) >= 0) ||
+          (m.userid && m.userid.toLowerCase().indexOf(searchTerm) >= 0) ||
+          (m.department && m.department.toLowerCase().indexOf(searchTerm) >= 0);
       });
 
       if (filtered.length === 0) {
@@ -612,13 +765,13 @@
         return;
       }
 
-      let html = '<ul class="member-list">';
-      filtered.forEach(m => {
-        const isUsed = boundUserids.has(m.userid);
-        const isSelected = selectedWechatUserid === m.userid;
-        const boundTherapist = isUsed ? therapists.find(t => t.wechat_userid === m.userid) : null;
+      var html = '<ul class="member-list">';
+      filtered.forEach(function(m) {
+        var isUsed = !!boundUserids[m.userid];
+        var isSelected = selectedWechatUserid === m.userid;
+        var boundTherapist = isUsed ? boundUserids[m.userid] : null;
 
-        let classes = 'member-item';
+        var classes = 'member-item';
         if (isSelected) classes += ' selected';
         if (isUsed) classes += ' bound';
 
@@ -656,11 +809,11 @@
 
     // 更新選擇信息
     function updateSelectionInfo() {
-      const infoEl = document.getElementById('selection-info');
-      const bindBtn = document.getElementById('bind-btn');
+      var infoEl = document.getElementById('selection-info');
+      var bindBtn = document.getElementById('bind-btn');
 
-      const therapist = selectedTherapistId ? therapists.find(t => t.id === selectedTherapistId) : null;
-      const member = selectedWechatUserid ? wechatMembers.find(m => m.userid === selectedWechatUserid) : null;
+      var therapist = selectedTherapistId ? therapists.find(function(t) { return t.id === selectedTherapistId; }) : null;
+      var member = selectedWechatUserid ? wechatMembers.find(function(m) { return m.userid === selectedWechatUserid; }) : null;
 
       if (therapist && member) {
         infoEl.innerHTML = '技師: <strong>' + escapeHtml(therapist.name) + '</strong> &harr; 企業微信: <strong>' + escapeHtml(member.name) + '</strong> (' + escapeHtml(member.userid) + ')';
@@ -681,12 +834,11 @@
     async function performBind() {
       if (!selectedTherapistId || !selectedWechatUserid) return;
 
-      const therapist = therapists.find(t => t.id === selectedTherapistId);
-      const member = wechatMembers.find(m => m.userid === selectedWechatUserid);
+      var therapist = therapists.find(function(t) { return t.id === selectedTherapistId; });
+      var member = wechatMembers.find(function(m) { return m.userid === selectedWechatUserid; });
 
       if (!therapist || !member) return;
 
-      // 如果技師已綁定，提示確認
       if (therapist.wechat_userid) {
         if (!confirm('技師「' + therapist.name + '」已綁定企業微信成員「' + therapist.wechat_userid + '」，是否要更換綁定？')) {
           return;
@@ -694,7 +846,7 @@
       }
 
       try {
-        const response = await fetch('/api/therapists/' + selectedTherapistId + '/bind-wechat', {
+        var response = await fetch('/api/therapists/' + selectedTherapistId + '/bind-wechat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -703,13 +855,61 @@
           }),
         });
 
-        const result = await response.json();
+        var result = await response.json();
         if (result.success) {
-          showToast('綁定成功：' + therapist.name + ' ↔ ' + member.name, 'success');
+          showToast('綁定成功：' + therapist.name + ' \u2194 ' + member.name, 'success');
           selectedTherapistId = null;
           selectedWechatUserid = null;
           await loadTherapists();
           renderWechatMembers();
+          updateSelectionInfo();
+        } else {
+          showToast('綁定失敗：' + result.error, 'error');
+        }
+      } catch (error) {
+        showToast('綁定失敗：' + error.message, 'error');
+      }
+    }
+
+    // 手動綁定
+    async function performManualBind() {
+      var therapistId = document.getElementById('manual-therapist-select').value;
+      var wechatUserid = document.getElementById('manual-wechat-userid').value.trim();
+      var wechatName = document.getElementById('manual-wechat-name').value.trim();
+
+      if (!therapistId) {
+        showToast('請選擇技師', 'error');
+        return;
+      }
+      if (!wechatUserid) {
+        showToast('請輸入企業微信 userid', 'error');
+        return;
+      }
+
+      var therapist = therapists.find(function(t) { return t.id === parseInt(therapistId); });
+      if (therapist && therapist.wechat_userid) {
+        if (!confirm('技師「' + therapist.name + '」已綁定「' + therapist.wechat_userid + '」，是否要更換綁定？')) {
+          return;
+        }
+      }
+
+      try {
+        var response = await fetch('/api/therapists/' + therapistId + '/bind-wechat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            wechatUserid: wechatUserid,
+            wechatName: wechatName || wechatUserid,
+          }),
+        });
+
+        var result = await response.json();
+        if (result.success) {
+          showToast('手動綁定成功：' + (therapist ? therapist.name : '') + ' \u2194 ' + wechatUserid, 'success');
+          document.getElementById('manual-wechat-userid').value = '';
+          document.getElementById('manual-wechat-name').value = '';
+          await loadTherapists();
+          if (wechatApiAvailable) renderWechatMembers();
           updateSelectionInfo();
         } else {
           showToast('綁定失敗：' + result.error, 'error');
@@ -726,16 +926,16 @@
       }
 
       try {
-        const response = await fetch('/api/therapists/' + therapistId + '/unbind-wechat', {
+        var response = await fetch('/api/therapists/' + therapistId + '/unbind-wechat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         });
 
-        const result = await response.json();
+        var result = await response.json();
         if (result.success) {
           showToast('已解除「' + therapistName + '」的企業微信綁定', 'success');
           await loadTherapists();
-          renderWechatMembers();
+          if (wechatApiAvailable) renderWechatMembers();
           updateSelectionInfo();
         } else {
           showToast('解綁失敗：' + result.error, 'error');
@@ -752,7 +952,7 @@
 
     function setTherapistFilter(filter, btn) {
       therapistFilter = filter;
-      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
       btn.classList.add('active');
       renderTherapists();
     }
@@ -764,17 +964,33 @@
 
     // 更新統計
     function updateStats() {
-      const total = therapists.length;
-      const bound = therapists.filter(t => t.wechat_userid).length;
-      const unbound = total - bound;
+      var total = therapists.length;
+      var bound = therapists.filter(function(t) { return t.wechat_userid; }).length;
+      var unbound = total - bound;
       document.getElementById('stat-total').textContent = total;
       document.getElementById('stat-bound').textContent = bound;
       document.getElementById('stat-unbound').textContent = unbound;
     }
 
+    // 更新手動綁定下拉選單
+    function updateManualSelect() {
+      var select = document.getElementById('manual-therapist-select');
+      select.innerHTML = '<option value="">-- 選擇技師 --</option>';
+      therapists.forEach(function(t) {
+        var option = document.createElement('option');
+        option.value = t.id;
+        var label = t.name;
+        if (t.display_number) label += ' (' + t.display_number + ')';
+        if (t.location_name) label += ' - ' + t.location_name;
+        if (t.wechat_userid) label += ' [已綁定: ' + t.wechat_userid + ']';
+        option.textContent = label;
+        select.appendChild(option);
+      });
+    }
+
     // 根據 userid 獲取企業微信成員名稱
     function getWechatNameByUserid(userid) {
-      const member = wechatMembers.find(m => m.userid === userid);
+      var member = wechatMembers.find(function(m) { return m.userid === userid; });
       return member ? member.name : '';
     }
 
@@ -789,7 +1005,7 @@
     // HTML 轉義
     function escapeHtml(text) {
       if (!text) return '';
-      const div = document.createElement('div');
+      var div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
     }

@@ -57,6 +57,20 @@ router.get('/members', async (req, res) => {
       params: { access_token: token },
     });
 
+    // 檢查 IP 白名單錯誤
+    if (deptResponse.data.errcode === 60020) {
+      const ipMatch = deptResponse.data.errmsg.match(/from ip: ([\d.]+)/);
+      const serverIp = ipMatch ? ipMatch[1] : '未知';
+      return res.json({
+        success: false,
+        error: 'IP_NOT_WHITELISTED',
+        message: `服務器 IP (${serverIp}) 不在企業微信可信 IP 列表中。請在企業微信管理後台 → 應用管理 → 應用 → IP白名單中添加此 IP。`,
+        serverIp: serverIp,
+        members: [],
+        total: 0,
+      });
+    }
+
     if (deptResponse.data.errcode !== 0) {
       throw new Error(`獲取部門列表失敗: ${deptResponse.data.errmsg}`);
     }
@@ -108,6 +122,8 @@ router.get('/members', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message,
+      members: [],
+      total: 0,
     });
   }
 });
