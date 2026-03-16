@@ -85,6 +85,10 @@ app.get('/admin/customers', basicAuth, (req, res) => {
   res.render('admin/customers');
 });
 
+app.get('/admin/wechat-binding', basicAuth, (req, res) => {
+  res.render('admin/wechat-binding');
+});
+
 // API 路由
 const bookingRoutes = require('./api/bookingRoutes');
 const noshowRoutes = require('./api/noshowRoutes');
@@ -94,6 +98,7 @@ const customerRoutes = require('./api/customerRoutes');
 const wechatWebhook = require('./api/wechatWebhook');
 const wechatCallbackRoute = require('./api/wechatCallbackRoute');
 const telegramWebhookRoute = require('./api/telegramWebhookRoute');
+const wechatBindingRoutes = require('./api/wechatBindingRoutes');
 
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/noshows', noshowRoutes);
@@ -103,6 +108,8 @@ app.use('/api/customers', customerRoutes);
 app.use('/wechat/webhook', wechatWebhook);
 app.use('/api/wechat/callback', wechatCallbackRoute);
 app.use('/api/telegram/webhook', telegramWebhookRoute);
+app.use('/api/wechat', wechatBindingRoutes);
+app.use('/api', wechatBindingRoutes);
 
 // AI 預約會話查詢端點
 app.get('/api/ai-sessions', basicAuth, async (req, res) => {
