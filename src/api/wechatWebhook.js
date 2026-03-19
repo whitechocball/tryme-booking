@@ -1,18 +1,19 @@
+/**
+ * 企業微信 Webhook 路由（備用回調入口）
+ * 
+ * 路徑：/wechat/webhook
+ * 
+ * 此路由作為備用的企業微信回調入口
+ * 主要回調入口為 /api/wechat/callback
+ */
+
 const express = require('express');
 const router = express.Router();
-const xml2js = require('xml2js');
 const logger = require('../utils/logger');
-const wechatUtil = require('../utils/wechat');
+const wecom = require('../utils/wecom');
 const Booking = require('../models/booking');
 const Therapist = require('../models/therapist');
 const BookingService = require('../services/bookingService');
-
-const WECHAT_TOKEN = process.env.WECHAT_WEBHOOK_TOKEN || 'tryme_webhook_token';
-const ENCODING_AES_KEY = process.env.WECHAT_ENCODING_AES_KEY || '';
-const CORP_ID = process.env.WECHAT_CORP_ID;
-
-const xmlBuilder = new xml2js.Builder({ rootName: 'xml' });
-const xmlParser = new xml2js.Parser();
 
 /**
  * 驗證企業微信回調 URL
@@ -22,16 +23,29 @@ router.get('/', (req, res) => {
   try {
     const { msg_signature, timestamp, nonce, echostr } = req.query;
 
-    // 驗證簽名
-    if (!wechatUtil.verifySignature(msg_signature, timestamp, nonce, echostr, WECHAT_TOKEN)) {
-      logger.error('企業微信回調簽名驗證失敗', { msg_signature, timestamp, nonce });
-      return res.status(403).send('Forbidden');
+    logger.info('收到 webhook 回調驗證請求', { msg_signature, timestamp, nonce });
+
+    if (!msg_signature || !timestamp || !nonce || !echostr) {
+      return res.status(400).send('Missing parameters');
     }
 
-    logger.info('企業微信回調 URL 驗證成功');
-    res.send(echostr);
+    if (!wecom.isCallbackConfigured()) {
+      logger.error('回調配置不完整');
+      return res.status(500).send('Callback not configured');
+    }
+
+    // 驗證簽名
+    if (!wecom.verifySignature(msg_signature, timestamp, nonce, echostr)) {
+      logger.error('webhook 簽名驗證失敗');
+      return res.status(403).send('Invalid signature');
+    }
+
+    // 解密 echostr
+    const { message } = wecom.decrypt(echostr);
+    logger.info('webhook 回調 URL 驗證成功');
+    res.status(200).send(message);
   } catch (error) {
-    logger.error('企業微信回調驗證失敗', { error: error.message });
+    logger.error('webhook 回調驗證失敗', { error: error.message });
     res.status(500).send('Internal Server Error');
   }
 });
@@ -39,123 +53,109 @@ router.get('/', (req, res) => {
 /**
  * 接收企業微信回調消息
  * POST /wechat/webhook
- * 技師通過微信回覆「1」(接受) 或「2」(拒絕)
  */
-router.post('/', async (req, res) => {
+router.post('/', express.text({ type: ['text/xml', 'application/xml'] }), async (req, res) => {
   try {
     const { msg_signature, timestamp, nonce } = req.query;
-    let body = '';
+    const body = typeof req.body === 'string' ? req.body : '';
 
-    // 收集請求體
-    req.on('data', chunk => {
-      body += chunk;
+    logger.info('收到 webhook 回調消息', {
+      msg_signature, timestamp, nonce,
+      bodyLength: body.length,
     });
 
-    req.on('end', async () => {
-      try {
-        // 驗證簽名
-        if (!wechatUtil.verifySignature(msg_signature, timestamp, nonce, body, WECHAT_TOKEN)) {
-          logger.error('企業微信回調簽名驗證失敗', { msg_signature, timestamp, nonce });
-          return res.status(403).send('Forbidden');
-        }
+    // 從 XML 中提取 Encrypt 字段
+    const encrypted = wecom.extractEncryptFromXml(body);
+    if (!encrypted) {
+      logger.error('無法從 XML 中提取 Encrypt 字段');
+      return res.send('success');
+    }
 
-        // 解密消息
-        let decryptedXml;
-        if (ENCODING_AES_KEY) {
-          try {
-            decryptedXml = wechatUtil.decryptMessage(body, ENCODING_AES_KEY, CORP_ID);
-          } catch (error) {
-            logger.error('企業微信消息解密失敗', { error: error.message });
-            return res.status(400).send('Bad Request');
-          }
-        } else {
-          decryptedXml = body;
-        }
+    // 驗證簽名
+    if (!wecom.verifySignature(msg_signature, timestamp, nonce, encrypted)) {
+      logger.error('webhook POST 簽名驗證失敗');
+      return res.send('success');
+    }
 
-        // 解析 XML
-        const message = await xmlParser.parseStringPromise(decryptedXml);
-        const msg = message.xml;
+    // 解密消息
+    const { message: xmlContent } = wecom.decrypt(encrypted);
+    const msg = wecom.parseCallbackMessage(xmlContent);
 
-        logger.info('收到企業微信回調消息', {
-          msgType: msg.MsgType?.[0],
-          fromUser: msg.FromUserID?.[0],
-          content: msg.Content?.[0],
-        });
-
-        // 處理不同類型的消息
-        if (msg.MsgType?.[0] === 'text') {
-          await handleTextMessage(msg, res);
-        } else {
-          // 其他消息類型暫不處理
-          res.send('ok');
-        }
-      } catch (error) {
-        logger.error('處理企業微信回調失敗', { error: error.message });
-        res.send('ok'); // 返回 ok 避免企業微信重試
-      }
+    logger.info('webhook 解析消息', {
+      msgType: msg.msgType,
+      fromUser: msg.fromUserName,
+      content: msg.content,
     });
+
+    // 立即返回
+    res.send('success');
+
+    // 異步處理文本消息
+    if (msg.msgType === 'text' && msg.fromUserName && msg.content) {
+      handleTextMessage(msg).catch(error => {
+        logger.error('webhook 處理消息失敗', { error: error.message });
+      });
+    }
   } catch (error) {
-    logger.error('企業微信回調處理異常', { error: error.message });
-    res.status(500).send('Internal Server Error');
+    logger.error('webhook 回調處理異常', { error: error.message });
+    res.send('success');
   }
 });
 
 /**
  * 處理文本消息（技師的回覆）
  */
-async function handleTextMessage(msg, res) {
+async function handleTextMessage(msg) {
   try {
-    const therapistExternalUserId = msg.FromUserID?.[0];
-    const content = msg.Content?.[0]?.trim();
+    const wechatUserId = msg.fromUserName;
+    const content = (msg.content || '').trim();
 
     // 查找技師
     const therapists = await Therapist.getAll();
-    const therapist = therapists.find(t => t.external_user_id === therapistExternalUserId);
+    const therapist = therapists.find(
+      t => t.wechat_userid === wechatUserId || t.external_user_id === wechatUserId
+    );
 
     if (!therapist) {
-      logger.warn('收到未知技師的消息', { therapistExternalUserId });
-      res.send('ok');
+      logger.warn('收到未知技師的消息', { wechatUserId });
       return;
     }
 
     // 解析技師的回覆
-    // 消息格式應該是：「1」或「2」或「booking_id 1」或「booking_id 2」
     let bookingId = null;
     let response = null;
 
-    // 嘗試解析「booking_id response」格式
     const parts = content.split(/\s+/);
     if (parts.length === 2 && (parts[1] === '1' || parts[1] === '2')) {
       bookingId = parseInt(parts[0], 10);
       response = parts[1] === '1' ? 'accept' : 'reject';
     } else if (content === '1' || content === '2') {
-      // 如果只有數字，查找該技師最新的待確認預約
       response = content === '1' ? 'accept' : 'reject';
       const pendingBooking = await Booking.getAll({
         therapistId: therapist.id,
         status: 'pending',
       });
       if (pendingBooking.length > 0) {
-        // 取最新的預約
         bookingId = pendingBooking[pendingBooking.length - 1].id;
       }
+    } else {
+      // 交給 AI 預約橋接處理自然語言回覆
+      const AIBookingBridge = require('../services/aiBookingBridge');
+      await AIBookingBridge.handleTechnicianReply(wechatUserId, content);
+      return;
     }
 
     if (!bookingId || !response) {
-      logger.warn('無法解析技師的回覆', { therapistExternalUserId, content });
-      res.send('ok');
+      logger.warn('無法解析技師的回覆', { wechatUserId, content });
       return;
     }
 
-    // 獲取預約信息
     const booking = await Booking.getById(bookingId);
     if (!booking || booking.therapist_id !== therapist.id) {
       logger.warn('預約不存在或技師無權操作', { bookingId, therapistId: therapist.id });
-      res.send('ok');
       return;
     }
 
-    // 根據技師的回覆更新預約狀態
     if (response === 'accept') {
       await BookingService.confirmBooking(bookingId, therapist.id);
       logger.info('技師已接受預約', { bookingId, therapistId: therapist.id });
@@ -163,11 +163,8 @@ async function handleTextMessage(msg, res) {
       await BookingService.rejectBooking(bookingId, therapist.id);
       logger.info('技師已拒絕預約', { bookingId, therapistId: therapist.id });
     }
-
-    res.send('ok');
   } catch (error) {
     logger.error('處理技師回覆失敗', { error: error.message });
-    res.send('ok');
   }
 }
 

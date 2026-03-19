@@ -1,75 +1,20 @@
+/**
+ * 企業微信回調路由
+ * 
+ * 路徑：/api/wechat/callback
+ * 
+ * GET  - 回調 URL 驗證（企業微信配置時發送）
+ * POST - 接收企業微信推送的消息/事件
+ */
+
 const express = require('express');
 const router = express.Router();
-const crypto = require('crypto');
 const logger = require('../utils/logger');
+const wecom = require('../utils/wecom');
 
-// 環境變量
-const WECHAT_TOKEN = process.env.WECHAT_TOKEN || '';
-const ENCODING_AES_KEY = process.env.WECHAT_ENCODING_AES_KEY || '';
-const CORP_ID = process.env.WECHAT_CORP_ID || '';
+// ==================== GET: 回調 URL 驗證 ====================
 
 /**
- * 企業微信 WXBizMsgCrypt 實現
- * 
- * 加解密方案：
- * - AES Key = Base64Decode(EncodingAESKey + "=")，共 32 字節
- * - IV = AES Key 的前 16 字節
- * - 使用 AES-256-CBC 模式，PKCS#7 填充（block size = 32）
- * 
- * 解密後的明文結構：
- * [16字節隨機字符串][4字節消息長度(網絡字節序)][消息內容][CorpID]
- */
-
-/**
- * 計算企業微信簽名
- * dev_msg_signature = SHA1(sort(token, timestamp, nonce, encrypt))
- */
-function getSignature(token, timestamp, nonce, encrypt) {
-  const arr = [token, timestamp, nonce, encrypt].sort();
-  const str = arr.join('');
-  return crypto.createHash('sha1').update(str).digest('hex');
-}
-
-/**
- * AES 解密企業微信消息
- * @param {string} encrypted - Base64 編碼的密文
- * @returns {object} { message, corpId }
- */
-function decrypt(encrypted) {
-  // EncodingAESKey 是 43 個字符的 Base64 編碼（缺少尾部 '='）
-  const aesKey = Buffer.from(ENCODING_AES_KEY + '=', 'base64');
-  const iv = aesKey.slice(0, 16);
-
-  const decipher = crypto.createDecipheriv('aes-256-cbc', aesKey, iv);
-  decipher.setAutoPadding(false);
-
-  let decrypted = Buffer.concat([
-    decipher.update(Buffer.from(encrypted, 'base64')),
-    decipher.final()
-  ]);
-
-  // 移除 PKCS#7 填充（block size = 32）
-  const padLen = decrypted[decrypted.length - 1];
-  if (padLen < 1 || padLen > 32) {
-    throw new Error('Invalid PKCS#7 padding');
-  }
-  decrypted = decrypted.slice(0, decrypted.length - padLen);
-
-  // 解析明文結構：
-  // 前 16 字節：隨機字符串
-  // 接下來 4 字節：消息長度（網絡字節序，Big Endian）
-  // 接下來 msgLen 字節：消息內容
-  // 剩餘字節：CorpID
-  const msgLen = decrypted.readUInt32BE(16);
-  const message = decrypted.slice(20, 20 + msgLen).toString('utf8');
-  const corpId = decrypted.slice(20 + msgLen).toString('utf8');
-
-  return { message, corpId };
-}
-
-/**
- * 驗證回調 URL（GET 請求）
- * 
  * 企業微信配置回調 URL 時會發送 GET 請求：
  * ?msg_signature=xxx&timestamp=xxx&nonce=xxx&echostr=xxx
  * 
@@ -87,10 +32,8 @@ router.get('/', (req, res) => {
       msg_signature,
       timestamp,
       nonce,
-      echostr: echostr ? echostr.substring(0, 20) + '...' : 'null',
-      hasToken: !!WECHAT_TOKEN,
-      hasAesKey: !!ENCODING_AES_KEY,
-      hasCorpId: !!CORP_ID
+      echostr: echostr ? echostr.substring(0, 30) + '...' : 'null',
+      callbackConfigured: wecom.isCallbackConfigured(),
     });
 
     if (!msg_signature || !timestamp || !nonce || !echostr) {
@@ -98,31 +41,30 @@ router.get('/', (req, res) => {
       return res.status(400).send('Missing required parameters');
     }
 
-    // 步驟 1：驗證簽名
-    const signature = getSignature(WECHAT_TOKEN, timestamp, nonce, echostr);
-    logger.info('簽名驗證', {
-      computed: signature,
-      expected: msg_signature,
-      match: signature === msg_signature
-    });
+    if (!wecom.isCallbackConfigured()) {
+      logger.error('企業微信回調配置不完整（缺少 WECHAT_CALLBACK_TOKEN 或 WECHAT_ENCODING_AES_KEY）');
+      return res.status(500).send('Callback not configured');
+    }
 
-    if (signature !== msg_signature) {
-      logger.error('簽名驗證失敗', { computed: signature, expected: msg_signature });
+    // 步驟 1：驗證簽名
+    if (!wecom.verifySignature(msg_signature, timestamp, nonce, echostr)) {
+      logger.error('簽名驗證失敗', { msg_signature });
       return res.status(403).send('Invalid signature');
     }
 
     // 步驟 2：解密 echostr
-    const { message, corpId } = decrypt(echostr);
+    const { message, corpId } = wecom.decrypt(echostr);
     logger.info('解密成功', { message, corpId });
 
     // 步驟 3：驗證 CorpID
-    if (CORP_ID && corpId !== CORP_ID) {
-      logger.error('CorpID 不匹配', { expected: CORP_ID, actual: corpId });
+    const wecomConfig = wecom.getConfig();
+    if (wecomConfig.corpId && corpId !== wecomConfig.corpId) {
+      logger.error('CorpID 不匹配', { expected: wecomConfig.corpId, actual: corpId });
       return res.status(403).send('Invalid CorpID');
     }
 
     // 步驟 4：返回解密後的明文
-    logger.info('企業微信回調 URL 驗證成功', { echostr: message });
+    logger.info('企業微信回調 URL 驗證成功');
     res.status(200).send(message);
   } catch (error) {
     logger.error('企業微信回調驗證異常', { error: error.message, stack: error.stack });
@@ -130,8 +72,14 @@ router.get('/', (req, res) => {
   }
 });
 
+// ==================== POST: 接收回調消息 ====================
+
 /**
- * 接收企業微信回調消息（POST 請求）
+ * 接收企業微信推送的消息和事件
+ * 
+ * 消息類型：
+ * - text: 技師回覆的文本消息（如「接受」「拒絕」）
+ * - event: 事件消息（如菜單點擊等）
  */
 router.post('/', express.text({ type: ['text/xml', 'application/xml'] }), async (req, res) => {
   try {
@@ -139,94 +87,165 @@ router.post('/', express.text({ type: ['text/xml', 'application/xml'] }), async 
     const body = typeof req.body === 'string' ? req.body : '';
 
     logger.info('收到企業微信回調消息', {
-      msg_signature, timestamp, nonce,
+      msg_signature,
+      timestamp,
+      nonce,
       bodyLength: body.length,
-      bodyPreview: body.substring(0, 200)
+      bodyPreview: body.substring(0, 200),
     });
 
     // 從 XML 中提取 Encrypt 字段
-    const encryptMatch = body.match(/<Encrypt><!\[CDATA\[(.*?)\]\]><\/Encrypt>/);
-    if (!encryptMatch) {
+    const encrypted = wecom.extractEncryptFromXml(body);
+    if (!encrypted) {
       logger.error('無法從 XML 中提取 Encrypt 字段');
       return res.send('success');
     }
 
-    const encrypted = encryptMatch[1];
-
     // 驗證簽名
-    const signature = getSignature(WECHAT_TOKEN, timestamp, nonce, encrypted);
-    if (signature !== msg_signature) {
+    if (!wecom.verifySignature(msg_signature, timestamp, nonce, encrypted)) {
       logger.error('POST 消息簽名驗證失敗');
       return res.send('success');
     }
 
     // 解密消息
-    const { message, corpId } = decrypt(encrypted);
-    logger.info('解密企業微信消息', { corpId, messagePreview: message.substring(0, 200) });
+    const { message: xmlContent, corpId } = wecom.decrypt(encrypted);
+    logger.info('解密企業微信消息成功', { corpId, messagePreview: xmlContent.substring(0, 300) });
 
-    // 立即返回 200，避免企業微信重試
+    // 解析消息
+    const msg = wecom.parseCallbackMessage(xmlContent);
+    logger.info('解析企業微信消息', {
+      fromUser: msg.fromUserName,
+      msgType: msg.msgType,
+      content: msg.content,
+      event: msg.event,
+      eventKey: msg.eventKey,
+    });
+
+    // 立即返回 success，避免企業微信重試
     res.send('success');
 
     // 異步處理消息
-    processWechatMessage(message).catch(error => {
+    processMessage(msg).catch(error => {
       logger.error('處理企業微信消息失敗', { error: error.message });
     });
   } catch (error) {
-    logger.error('企業微信回調處理異常', { error: error.message });
+    logger.error('企業微信回調處理異常', { error: error.message, stack: error.stack });
     res.send('success');
   }
 });
 
+// ==================== 消息處理 ====================
+
 /**
  * 異步處理企業微信消息
  */
-async function processWechatMessage(xmlContent) {
+async function processMessage(msg) {
   try {
-    const fromUser = extractXmlField(xmlContent, 'FromUserName');
-    const content = extractXmlField(xmlContent, 'Content');
-    const msgType = extractXmlField(xmlContent, 'MsgType');
+    const fromUser = msg.fromUserName;
+    const msgType = msg.msgType;
 
-    logger.info('解析企業微信消息', { fromUser, content, msgType });
-
-    if (!fromUser || !content) {
-      logger.warn('企業微信消息缺少必要字段');
+    if (!fromUser) {
+      logger.warn('消息缺少發送者信息');
       return;
     }
 
-    // 只處理文本消息
-    if (msgType && msgType !== 'text') {
-      logger.info('非文本消息，忽略', { msgType });
-      return;
+    switch (msgType) {
+      case 'text':
+        await handleTextMessage(fromUser, msg.content);
+        break;
+      case 'event':
+        await handleEventMessage(fromUser, msg.event, msg.eventKey);
+        break;
+      default:
+        logger.info('收到非文本/事件消息，忽略', { msgType });
     }
-
-    // 交給 AI 預約橋接處理
-    const AIBookingBridge = require('../services/aiBookingBridge');
-    await AIBookingBridge.handleTechnicianReply(fromUser, content);
   } catch (error) {
-    logger.error('處理企業微信消息失敗', { error: error.message });
+    logger.error('處理消息失敗', { error: error.message });
   }
 }
 
 /**
- * 從 XML 中提取字段值
+ * 處理文本消息（技師回覆接受/拒絕）
  */
-function extractXmlField(xml, fieldName) {
-  const tagStart = `<${fieldName}>`;
-  const tagEnd = `</${fieldName}>`;
+async function handleTextMessage(fromUser, content) {
+  try {
+    if (!content) {
+      logger.warn('文本消息內容為空', { fromUser });
+      return;
+    }
 
-  const startIndex = xml.indexOf(tagStart);
-  const endIndex = xml.indexOf(tagEnd);
+    const trimmedContent = content.trim();
+    logger.info('處理技師文本回覆', { fromUser, content: trimmedContent });
 
-  if (startIndex === -1 || endIndex === -1) return null;
-
-  let content = xml.substring(startIndex + tagStart.length, endIndex).trim();
-
-  // 處理 CDATA
-  if (content.startsWith('<![CDATA[') && content.endsWith(']]>')) {
-    return content.substring(9, content.length - 3);
+    // 交給 AI 預約橋接處理
+    const AIBookingBridge = require('../services/aiBookingBridge');
+    await AIBookingBridge.handleTechnicianReply(fromUser, trimmedContent);
+  } catch (error) {
+    logger.error('處理文本消息失敗', { error: error.message, fromUser });
   }
+}
 
-  return content;
+/**
+ * 處理事件消息（菜單點擊等）
+ */
+async function handleEventMessage(fromUser, event, eventKey) {
+  try {
+    logger.info('處理事件消息', { fromUser, event, eventKey });
+
+    if (event === 'click') {
+      // 處理菜單點擊事件
+      if (eventKey && eventKey.startsWith('ACCEPT_BOOKING_')) {
+        const bookingId = eventKey.replace('ACCEPT_BOOKING_', '');
+        await handleBookingAction(fromUser, bookingId, 'accept');
+      } else if (eventKey && eventKey.startsWith('REJECT_BOOKING_')) {
+        const bookingId = eventKey.replace('REJECT_BOOKING_', '');
+        await handleBookingAction(fromUser, bookingId, 'reject');
+      }
+    }
+  } catch (error) {
+    logger.error('處理事件消息失敗', { error: error.message, fromUser });
+  }
+}
+
+/**
+ * 處理預約接單/拒單操作
+ */
+async function handleBookingAction(fromUser, bookingId, action) {
+  try {
+    logger.info('處理預約操作', { fromUser, bookingId, action });
+
+    const db = require('../utils/db');
+    const BookingService = require('../services/bookingService');
+
+    // 查找技師
+    const therapistResult = await db.query(
+      'SELECT * FROM therapists WHERE wechat_userid = $1',
+      [fromUser]
+    );
+
+    if (therapistResult.rows.length === 0) {
+      logger.warn('找不到對應的技師', { fromUser });
+      await wecom.sendTextMessage(fromUser, '❌ 無法識別您的身份，請聯繫管理員綁定企業微信帳號。');
+      return;
+    }
+
+    const therapist = therapistResult.rows[0];
+
+    if (action === 'accept') {
+      await BookingService.confirmBooking(parseInt(bookingId, 10), therapist.id);
+      await wecom.sendTextMessage(fromUser, `✅ 您已接受預約 #${bookingId}`);
+    } else if (action === 'reject') {
+      await BookingService.rejectBooking(parseInt(bookingId, 10), therapist.id);
+      await wecom.sendTextMessage(fromUser, `❌ 您已拒絕預約 #${bookingId}`);
+    }
+  } catch (error) {
+    logger.error('處理預約操作失敗', { error: error.message, fromUser, bookingId });
+    try {
+      await wecom.sendTextMessage(fromUser, `⚠️ 處理預約操作時發生錯誤：${error.message}`);
+    } catch (e) {
+      logger.error('發送錯誤通知失敗', { error: e.message });
+    }
+  }
 }
 
 module.exports = router;

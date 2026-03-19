@@ -3,54 +3,17 @@ const router = express.Router();
 const axios = require('axios');
 const db = require('../utils/db');
 const logger = require('../utils/logger');
+const wecom = require('../utils/wecom');
 
-// 企業微信配置
+// 企業微信配置（從環境變量讀取，不再硬編碼）
 const WECHAT_API_BASE = 'https://qyapi.weixin.qq.com/cgi-bin';
-const CORP_ID = process.env.WECHAT_CORP_ID || 'ww6ccfc2612e6f75fd';
-const AGENT_ID = process.env.WECHAT_AGENT_ID || '1000002';
-const SECRET = process.env.WECHAT_SECRET || 'DnCK0s-xwkaTA0CGB0mlISGIieMTxM45HKA4Xeo2Uh0';
-
-// Token 緩存
-let accessToken = null;
-let tokenExpireTime = 0;
-
-/**
- * 獲取企業微信 access_token
- */
-async function getAccessToken() {
-  const now = Date.now();
-  if (accessToken && now < tokenExpireTime) {
-    return accessToken;
-  }
-
-  try {
-    const response = await axios.get(`${WECHAT_API_BASE}/gettoken`, {
-      params: {
-        corpid: CORP_ID,
-        corpsecret: SECRET,
-      },
-    });
-
-    if (response.data.errcode === 0) {
-      accessToken = response.data.access_token;
-      tokenExpireTime = now + (response.data.expires_in - 300) * 1000;
-      logger.info('企業微信綁定模組 Token 已更新');
-      return accessToken;
-    } else {
-      throw new Error(`企業微信 API 錯誤: ${response.data.errcode} - ${response.data.errmsg}`);
-    }
-  } catch (error) {
-    logger.error('獲取企業微信 Token 失敗', { error: error.message });
-    throw error;
-  }
-}
 
 /**
  * GET /api/wechat/members — 獲取企業微信成員列表
  */
 router.get('/members', async (req, res) => {
   try {
-    const token = await getAccessToken();
+    const token = await wecom.getAccessToken();
 
     // 先獲取部門列表
     const deptResponse = await axios.get(`${WECHAT_API_BASE}/department/list`, {
@@ -126,6 +89,24 @@ router.get('/members', async (req, res) => {
       total: 0,
     });
   }
+});
+
+/**
+ * GET /api/wechat/config-status — 檢查企業微信配置狀態
+ */
+router.get('/config-status', (req, res) => {
+  res.json({
+    success: true,
+    configured: wecom.isConfigured(),
+    callbackConfigured: wecom.isCallbackConfigured(),
+    config: {
+      hasCorpId: !!wecom.getConfig().corpId,
+      hasAgentId: !!wecom.getConfig().agentId,
+      hasSecret: !!wecom.getConfig().secret,
+      hasCallbackToken: !!wecom.getConfig().callbackToken,
+      hasEncodingAESKey: !!wecom.getConfig().callbackEncodingAESKey,
+    },
+  });
 });
 
 /**
@@ -213,6 +194,30 @@ router.post('/therapists/:id/unbind-wechat', async (req, res) => {
     });
   } catch (error) {
     logger.error('解綁企業微信失敗', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/wechat/test-message — 測試發送企業微信消息
+ */
+router.post('/test-message', async (req, res) => {
+  try {
+    const { userid, message } = req.body;
+
+    if (!userid) {
+      return res.status(400).json({ success: false, error: '缺少 userid' });
+    }
+
+    const result = await wecom.sendTextMessage(userid, message || '這是一條測試消息 from Tryme 預約系統');
+
+    res.json({
+      success: true,
+      message: '消息已發送',
+      result,
+    });
+  } catch (error) {
+    logger.error('測試消息發送失敗', { error: error.message });
     res.status(500).json({ success: false, error: error.message });
   }
 });

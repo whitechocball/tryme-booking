@@ -1,9 +1,24 @@
 const db = require('../utils/db');
 const logger = require('../utils/logger');
 const aiParser = require('./aiParser');
-const wechatService = require('../utils/wechat');
 const telegramUtil = require('../utils/telegram');
 const Customer = require('../models/customer');
+
+// 優先使用新的 wecom 模塊
+let wecom;
+try {
+  wecom = require('../utils/wecom');
+} catch (e) {
+  wecom = null;
+}
+
+// 兼容舊的 wechat 模塊
+let wechatService;
+try {
+  wechatService = require('../utils/wechat');
+} catch (e) {
+  wechatService = null;
+}
 
 // AI 預約會話狀態
 const SESSION_STATUS = {
@@ -95,15 +110,40 @@ class AIBookingBridge {
       // 8. 更新預約的 ai_session_id
       await db.query('UPDATE bookings SET ai_session_id = $1 WHERE id = $2', [session.id, bookingRecord.id]);
 
-      // 9. 發送企業微信消息給技師（只包含日期、時間、場所名稱）
+      // 9. 發送企業微信消息給技師（優先使用新的 wecom 模塊發送卡片消息）
       const wechatUserId = therapist.wechat_userid || therapist.external_user_id;
       if (wechatUserId) {
         try {
-          const message = `【新預約請求】\n日期：${bookingDate}\n時間：${bookingTime}\n場所：${location.name}\n\n請回覆「接受」或「拒絕」。`;
-          await wechatService.sendMessageToExternalContact(wechatUserId, message);
-          logger.info('企業微信預約通知已發送', { therapistId: therapist.id, wechatUserId });
+          if (wecom && wecom.isConfigured()) {
+            // 使用新的 wecom 模塊發送卡片消息
+            await wecom.sendBookingNotificationCard(wechatUserId, {
+              bookingId: bookingRecord.id,
+              customerName: customer.name || `用戶`,
+              locationName: location.name,
+              bookingDate: bookingDate,
+              bookingTime: bookingTime,
+              bookingCountWithTherapist: 0,
+              totalNoShowCount: 0,
+            });
+            logger.info('企業微信卡片通知已發送', { therapistId: therapist.id, wechatUserId });
+          } else if (wechatService) {
+            // 降級為舊模式文本消息
+            const message = `【新預約請求】\n日期：${bookingDate}\n時間：${bookingTime}\n場所：${location.name}\n\n請回覆「接受」或「拒絕」。`;
+            await wechatService.sendMessageToExternalContact(wechatUserId, message);
+            logger.info('企業微信文本通知已發送', { therapistId: therapist.id, wechatUserId });
+          }
         } catch (wechatError) {
           logger.error('發送企業微信通知失敗', { error: wechatError.message });
+          
+          // 嘗試降級為文本消息
+          if (wecom && wecom.isConfigured()) {
+            try {
+              const textMsg = `【新預約請求】\n預約編號: #${bookingRecord.id}\n日期：${bookingDate}\n時間：${bookingTime}\n場所：${location.name}\n\n請回覆「接受」或「拒絕」。`;
+              await wecom.sendTextMessage(wechatUserId, textMsg);
+            } catch (fallbackError) {
+              logger.error('降級文本消息也失敗', { error: fallbackError.message });
+            }
+          }
         }
       } else {
         logger.warn('技師未配置企業微信 ID', { therapistId: therapist.id });
@@ -213,6 +253,15 @@ class AIBookingBridge {
           `時間：${session.booking_time}\n\n` +
           `技師已接受您的預約，請準時到達。`;
         await telegramUtil.sendMessage(session.customer_telegram_id, confirmMsg);
+
+        // 通知技師確認成功
+        if (wecom && wecom.isConfigured()) {
+          try {
+            await wecom.sendTextMessage(wechatUserId, `✅ 您已成功接受預約 #${session.current_booking_id}`);
+          } catch (e) {
+            logger.warn('發送確認回執失敗', { error: e.message });
+          }
+        }
 
         logger.info('預約已確認', { bookingId: session.current_booking_id });
       } else if (parsed.accepted === false) {

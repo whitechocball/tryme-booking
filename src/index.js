@@ -8,10 +8,42 @@ const logger = require('./utils/logger');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 中間件
+// ==================== 企業微信域名驗證文件路由 ====================
+// 企業微信需要驗證域名所有權，會要求在根目錄放置一個驗證文件
+// 文件名格式通常為 WW_verify_xxxxxxxx.txt
+// 用戶從企業微信後台下載驗證文件後，放入 public/ 目錄即可
+// 此路由同時支持通過環境變量配置驗證文件內容
+
+app.get('/WW_verify_:filename.txt', (req, res) => {
+  const filename = `WW_verify_${req.params.filename}.txt`;
+  const filePath = path.join(__dirname, '../public', filename);
+  
+  // 優先從文件系統讀取
+  if (fs.existsSync(filePath)) {
+    return res.sendFile(filePath);
+  }
+  
+  // 其次從環境變量讀取
+  const envContent = process.env.WECHAT_VERIFY_FILE_CONTENT;
+  const envFilename = process.env.WECHAT_VERIFY_FILE_NAME;
+  
+  if (envContent && envFilename === filename) {
+    return res.type('text/plain').send(envContent);
+  }
+  
+  logger.warn('企業微信域名驗證文件不存在', { filename });
+  res.status(404).send('File not found');
+});
+
+// ==================== 中間件 ====================
 // 注意：企業微信回調需要原始 XML body，所以需要在 json 解析之前處理
 app.use('/api/wechat/callback', (req, res, next) => {
   // 讓 wechatCallbackRoute 自己處理 body 解析
+  next();
+});
+
+app.use('/wechat/webhook', (req, res, next) => {
+  // 讓 wechatWebhook 自己處理 body 解析
   next();
 });
 
@@ -46,21 +78,42 @@ const basicAuth = (req, res, next) => {
   }
 };
 
-// 路由
+// ==================== 健康檢查 ====================
 app.get('/health', (req, res) => {
   const uptime = process.uptime();
+  
+  // 檢查企業微信配置狀態
+  let wecomStatus = 'not_configured';
+  try {
+    const wecom = require('./utils/wecom');
+    if (wecom.isConfigured()) {
+      wecomStatus = wecom.isCallbackConfigured() ? 'fully_configured' : 'basic_configured';
+    }
+  } catch (e) {
+    wecomStatus = 'error';
+  }
+  
   res.json({
     status: 'ok',
     database: 'connected',
     timestamp: new Date().toISOString(),
     uptime: Math.floor(uptime),
-    version: '1.2.0',
-    releaseDate: '2026-03-16',
-    features: ['telegram-ai-booking', 'wechat-bridge', 'booking-conflict-detection', 'booking-status-workflow', 'timeout-handling']
+    version: '1.3.0',
+    releaseDate: '2026-03-19',
+    features: [
+      'telegram-ai-booking',
+      'wechat-bridge',
+      'wecom-card-messages',
+      'wecom-callback',
+      'booking-conflict-detection',
+      'booking-status-workflow',
+      'timeout-handling',
+    ],
+    wecom: wecomStatus,
   });
 });
 
-// 管理後台路由（需要認證）
+// ==================== 管理後台路由 ====================
 app.get('/admin', basicAuth, (req, res) => {
   res.render('admin/dashboard');
 });
@@ -89,7 +142,131 @@ app.get('/admin/wechat-binding', basicAuth, (req, res) => {
   res.render('admin/wechat-binding');
 });
 
-// API 路由
+// ==================== 企業微信預約操作頁面 ====================
+// 技師點擊卡片消息中的「查看預約」按鈕後跳轉到此頁面
+app.get('/api/wechat/booking-action', async (req, res) => {
+  try {
+    const { booking_id, action } = req.query;
+    
+    if (!booking_id) {
+      return res.status(400).send('缺少預約 ID');
+    }
+    
+    const bookingResult = await db.query(
+      `SELECT b.*, l.name as location_name, t.name as therapist_name, c.name as customer_name
+       FROM bookings b
+       LEFT JOIN locations l ON b.location_id = l.id
+       LEFT JOIN therapists t ON b.therapist_id = t.id
+       LEFT JOIN customers c ON b.customer_id = c.id
+       WHERE b.id = $1`,
+      [booking_id]
+    );
+    
+    if (bookingResult.rows.length === 0) {
+      return res.status(404).send('預約不存在');
+    }
+    
+    const booking = bookingResult.rows[0];
+    
+    // 如果帶有 action 參數，直接處理
+    if (action === 'accept' || action === 'reject') {
+      const BookingService = require('./services/bookingService');
+      
+      try {
+        if (action === 'accept') {
+          await BookingService.confirmBooking(parseInt(booking_id, 10), booking.therapist_id);
+        } else {
+          await BookingService.rejectBooking(parseInt(booking_id, 10), booking.therapist_id);
+        }
+        
+        const statusText = action === 'accept' ? '已接受' : '已拒絕';
+        return res.send(`
+          <html>
+          <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>預約操作</title>
+          <style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f5f5f5;}
+          .card{background:white;border-radius:12px;padding:32px;max-width:400px;width:90%;box-shadow:0 2px 12px rgba(0,0,0,0.1);text-align:center;}
+          .success{color:#52c41a;font-size:48px;margin-bottom:16px;}
+          .reject{color:#ff4d4f;font-size:48px;margin-bottom:16px;}
+          h2{margin:0 0 8px;color:#333;}p{color:#666;margin:4px 0;}</style></head>
+          <body><div class="card">
+          <div class="${action === 'accept' ? 'success' : 'reject'}">${action === 'accept' ? '✅' : '❌'}</div>
+          <h2>預約 #${booking_id} ${statusText}</h2>
+          <p>場所：${booking.location_name}</p>
+          <p>日期：${booking.booking_date}</p>
+          <p>時間：${booking.booking_time || booking.time_slot}</p>
+          </div></body></html>
+        `);
+      } catch (error) {
+        return res.send(`
+          <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>操作失敗</title>
+          <style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f5f5f5;}
+          .card{background:white;border-radius:12px;padding:32px;max-width:400px;width:90%;box-shadow:0 2px 12px rgba(0,0,0,0.1);text-align:center;}
+          .error{color:#ff4d4f;font-size:48px;margin-bottom:16px;}
+          h2{margin:0 0 8px;color:#333;}p{color:#666;}</style></head>
+          <body><div class="card">
+          <div class="error">⚠️</div>
+          <h2>操作失敗</h2>
+          <p>${error.message}</p>
+          </div></body></html>
+        `);
+      }
+    }
+    
+    // 顯示預約詳情和操作按鈕
+    const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN
+      ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+      : (process.env.APP_URL || 'https://tryme-app-production.up.railway.app');
+    
+    res.send(`
+      <html>
+      <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>預約詳情 #${booking_id}</title>
+      <style>
+        body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f5f5f5;}
+        .card{background:white;border-radius:12px;padding:32px;max-width:400px;width:90%;box-shadow:0 2px 12px rgba(0,0,0,0.1);}
+        h2{margin:0 0 16px;color:#333;text-align:center;}
+        .info{margin:12px 0;padding:12px;background:#f9f9f9;border-radius:8px;}
+        .info p{margin:6px 0;color:#555;font-size:14px;}
+        .info .label{color:#999;font-size:12px;}
+        .actions{display:flex;gap:12px;margin-top:24px;}
+        .btn{flex:1;padding:14px;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;text-decoration:none;text-align:center;display:block;}
+        .btn-accept{background:#52c41a;color:white;}
+        .btn-reject{background:#ff4d4f;color:white;}
+        .btn:active{opacity:0.8;}
+        .status{text-align:center;padding:8px;border-radius:6px;margin-bottom:16px;font-size:14px;}
+        .status-pending{background:#fff7e6;color:#d48806;}
+        .status-confirmed{background:#f6ffed;color:#52c41a;}
+        .status-cancelled{background:#fff1f0;color:#ff4d4f;}
+      </style></head>
+      <body>
+      <div class="card">
+        <h2>預約 #${booking_id}</h2>
+        <div class="status status-${booking.status === 'pending' || booking.status === 'pending_technician_confirmation' ? 'pending' : booking.status === 'confirmed' ? 'confirmed' : 'cancelled'}">
+          狀態：${booking.status}
+        </div>
+        <div class="info">
+          <p><span class="label">客戶</span><br>${booking.customer_name || '未知'}</p>
+          <p><span class="label">場所</span><br>${booking.location_name || '未知'}</p>
+          <p><span class="label">日期</span><br>${booking.booking_date}</p>
+          <p><span class="label">時間</span><br>${booking.booking_time || booking.time_slot || '未指定'}</p>
+        </div>
+        ${['pending', 'pending_technician_confirmation', 'waiting_therapist'].includes(booking.status) ? `
+        <div class="actions">
+          <a class="btn btn-accept" href="${baseUrl}/api/wechat/booking-action?booking_id=${booking_id}&action=accept">接受</a>
+          <a class="btn btn-reject" href="${baseUrl}/api/wechat/booking-action?booking_id=${booking_id}&action=reject">拒絕</a>
+        </div>` : '<p style="text-align:center;color:#999;margin-top:16px;">此預約已處理</p>'}
+      </div>
+      </body></html>
+    `);
+  } catch (error) {
+    logger.error('預約操作頁面錯誤', { error: error.message });
+    res.status(500).send('伺服器錯誤');
+  }
+});
+
+// ==================== API 路由 ====================
 const bookingRoutes = require('./api/bookingRoutes');
 const noshowRoutes = require('./api/noshowRoutes');
 const locationRoutes = require('./api/locationRoutes');
@@ -110,6 +287,30 @@ app.use('/api/wechat/callback', wechatCallbackRoute);
 app.use('/api/telegram/webhook', telegramWebhookRoute);
 app.use('/api/wechat', wechatBindingRoutes);
 app.use('/api', wechatBindingRoutes);
+
+// ==================== 企業微信配置狀態端點 ====================
+app.get('/api/wecom/status', basicAuth, (req, res) => {
+  try {
+    const wecom = require('./utils/wecom');
+    const config = wecom.getConfig();
+    
+    res.json({
+      success: true,
+      configured: wecom.isConfigured(),
+      callbackConfigured: wecom.isCallbackConfigured(),
+      config: {
+        corpId: config.corpId ? config.corpId.substring(0, 6) + '***' : '未設置',
+        agentId: config.agentId || '未設置',
+        hasSecret: !!config.secret,
+        hasCallbackToken: !!config.callbackToken,
+        hasEncodingAESKey: !!config.callbackEncodingAESKey,
+      },
+      callbackUrl: `${process.env.APP_URL || 'https://tryme-app-production.up.railway.app'}/api/wechat/callback`,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // AI 預約會話查詢端點
 app.get('/api/ai-sessions', basicAuth, async (req, res) => {
@@ -319,6 +520,23 @@ async function startServer() {
     const server = app.listen(PORT, () => {
       console.log(`✅ 伺服器運行在 http://localhost:${PORT}`);
     });
+
+    // 檢查企業微信配置狀態
+    try {
+      const wecom = require('./utils/wecom');
+      if (wecom.isConfigured()) {
+        console.log('✅ 企業微信 API 已配置');
+        if (wecom.isCallbackConfigured()) {
+          console.log('✅ 企業微信回調已配置');
+        } else {
+          console.log('⚠️ 企業微信回調未配置（WECHAT_CALLBACK_TOKEN / WECHAT_ENCODING_AES_KEY）');
+        }
+      } else {
+        console.log('⚠️ 企業微信未配置（WECHAT_CORP_ID / WECHAT_AGENT_ID / WECHAT_SECRET）');
+      }
+    } catch (e) {
+      console.log('⚠️ 企業微信模塊載入失敗:', e.message);
+    }
 
     // 啟動定時任務（超時處理 & 衝突檢測）
     try {

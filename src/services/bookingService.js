@@ -6,6 +6,14 @@ const NoShow = require('../models/noshow');
 const logger = require('../utils/logger');
 const telegramUtil = require('../utils/telegram');
 
+let wecom;
+try {
+  wecom = require('../utils/wecom');
+} catch (e) {
+  wecom = null;
+}
+
+// 兼容舊的 wechat.js
 let wechatUtil;
 try {
   wechatUtil = require('../utils/wechat');
@@ -51,8 +59,46 @@ class BookingService {
       // 5. 獲取客戶的總爽約次數
       const totalNoShowCount = await NoShow.getCountByCustomer(customerId);
 
-      // 6. 發送企業微信通知給技師
-      if (wechatUtil && therapist && therapist.external_user_id) {
+      // 6. 發送企業微信通知給技師（優先使用新的 wecom 模塊發送卡片消息）
+      const wechatUserId = therapist ? (therapist.wechat_userid || therapist.external_user_id) : null;
+      
+      if (wechatUserId && wecom && wecom.isConfigured()) {
+        const notificationData = {
+          bookingId: booking.id,
+          customerName: customer ? (customer.name || `用戶 ${customerId}`) : `用戶 ${customerId}`,
+          locationName: bookingDetails.location_name,
+          bookingDate: bookingDate,
+          timeSlot: this.getTimeSlotLabel(timeSlot),
+          timeOption: timeOption,
+          bookingTime: bookingDetails.booking_time,
+          bookingCountWithTherapist: bookingCountWithTherapist,
+          totalNoShowCount: totalNoShowCount,
+        };
+
+        try {
+          await wecom.sendBookingNotificationCard(wechatUserId, notificationData);
+          logger.info('企業微信卡片通知已發送', { bookingId: booking.id, therapistId, wechatUserId });
+        } catch (cardError) {
+          logger.warn('卡片消息發送失敗，嘗試文本消息', { error: cardError.message });
+          
+          // 降級為文本消息
+          try {
+            const textMsg = `【新預約通知】\n` +
+              `預約編號: #${booking.id}\n` +
+              `客戶: ${notificationData.customerName}\n` +
+              `場所: ${notificationData.locationName}\n` +
+              `日期: ${bookingDate}\n` +
+              `時間: ${notificationData.bookingTime || `${notificationData.timeSlot} ${timeOption || ''}`}\n` +
+              `歷史預約: ${bookingCountWithTherapist} 次\n` +
+              `爽約記錄: ${totalNoShowCount} 次\n\n` +
+              `請回覆「接受」或「拒絕」`;
+            await wecom.sendTextMessage(wechatUserId, textMsg);
+          } catch (textError) {
+            logger.error('文本消息也發送失敗', { error: textError.message });
+          }
+        }
+      } else if (wechatUserId && wechatUtil) {
+        // 兼容舊模式
         const notificationData = {
           bookingId: booking.id,
           customerName: customer ? (customer.name || `用戶 ${customerId}`) : `用戶 ${customerId}`,
@@ -65,7 +111,7 @@ class BookingService {
         };
 
         try {
-          await wechatUtil.sendBookingNotification(therapist.external_user_id, notificationData);
+          await wechatUtil.sendBookingNotification(wechatUserId, notificationData);
         } catch (error) {
           logger.error('發送企業微信通知失敗', { error: error.message, therapistId });
         }
@@ -109,6 +155,17 @@ class BookingService {
         });
       } catch (error) {
         logger.error('發送 Telegram 確認消息失敗', { error: error.message });
+      }
+
+      // 發送企業微信確認通知
+      const therapist = await Therapist.getById(therapistId);
+      const wechatUserId = therapist ? (therapist.wechat_userid || therapist.external_user_id) : null;
+      if (wechatUserId && wecom && wecom.isConfigured()) {
+        try {
+          await wecom.sendTextMessage(wechatUserId, `✅ 您已成功接受預約 #${bookingId}\n\n場所：${booking.location_name}\n日期：${booking.booking_date}\n時間：${booking.booking_time || booking.time_slot}`);
+        } catch (e) {
+          logger.warn('發送企業微信確認通知失敗', { error: e.message });
+        }
       }
 
       logger.info('預約已確認', { bookingId, therapistId });
@@ -185,6 +242,17 @@ class BookingService {
         });
       } catch (error) {
         logger.error('發送 Telegram 拒絕消息失敗', { error: error.message });
+      }
+
+      // 發送企業微信拒絕通知
+      const therapist = await Therapist.getById(therapistId);
+      const wechatUserId = therapist ? (therapist.wechat_userid || therapist.external_user_id) : null;
+      if (wechatUserId && wecom && wecom.isConfigured()) {
+        try {
+          await wecom.sendTextMessage(wechatUserId, `❌ 您已拒絕預約 #${bookingId}\n\n場所：${booking.location_name}\n日期：${booking.booking_date}`);
+        } catch (e) {
+          logger.warn('發送企業微信拒絕通知失敗', { error: e.message });
+        }
       }
 
       logger.info('預約已拒絕', { bookingId, therapistId });
