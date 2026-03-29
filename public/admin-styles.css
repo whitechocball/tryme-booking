@@ -253,7 +253,7 @@ table tr:hover {
   background: #f9fafb;
 }
 
-/* ---- Status badges ---- */
+/* ---- Status badges（統一狀態） ---- */
 .status-badge {
   display: inline-block;
   padding: 3px 10px;
@@ -263,14 +263,19 @@ table tr:hover {
   white-space: nowrap;
 }
 
-.status-waiting_therapist {
+.status-pending {
   background: #fef3c7;
   color: #92400e;
 }
 
-.status-waiting_service {
+.status-confirmed {
   background: #dbeafe;
   color: #1e40af;
+}
+
+.status-in_progress {
+  background: #e0e7ff;
+  color: #3730a3;
 }
 
 .status-completed {
@@ -278,17 +283,17 @@ table tr:hover {
   color: #065f46;
 }
 
-.status-customer_no_show {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.status-therapist_cancelled {
+.status-cancelled {
   background: #e5e7eb;
   color: #374151;
 }
 
-.status-therapist_no_show {
+.status-no_show {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-rescheduled {
   background: #fce7f3;
   color: #9d174d;
 }
@@ -502,75 +507,14 @@ table tr:hover {
 }
 
 .ranking-count {
-  font-size: 18px;
   font-weight: 700;
+  font-size: 18px;
   color: #3b82f6;
   flex-shrink: 0;
 }
 
-.ranking-count-label {
-  font-size: 11px;
-  color: #9ca3af;
-}
-
-/* ---- Modal ---- */
-.modal-overlay {
-  display: none;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0,0,0,0.5);
-  z-index: 2000;
-  align-items: center;
-  justify-content: center;
-}
-
-.modal-overlay.show {
-  display: flex;
-}
-
-.modal {
-  background: white;
-  border-radius: 12px;
-  padding: 24px;
-  max-width: 500px;
-  width: 90%;
-  max-height: 80vh;
-  overflow-y: auto;
-}
-
-.modal h3 {
-  font-size: 18px;
-  margin-bottom: 16px;
-  color: #1a1a2e;
-}
-
-.modal-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  margin-top: 20px;
-}
-
-/* ========================================
-   Responsive Design
-   ======================================== */
-
-/* Tablet */
-@media (max-width: 1024px) {
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-/* Mobile */
+/* ---- Responsive ---- */
 @media (max-width: 768px) {
-  .menu-toggle {
-    display: flex;
-  }
-
   .sidebar {
     transform: translateX(-100%);
   }
@@ -579,8 +523,20 @@ table tr:hover {
     transform: translateX(0);
   }
 
-  .sidebar-overlay.show {
+  .menu-toggle {
+    display: flex;
+  }
+
+  .sidebar-overlay {
     display: block;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+
+  .sidebar.open ~ .sidebar-overlay {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .main-content {
@@ -591,98 +547,29 @@ table tr:hover {
 
   .page-header {
     flex-direction: column;
-    align-items: flex-start;
     gap: 8px;
-    padding: 14px 16px;
-  }
-
-  .page-header h1 {
-    font-size: 18px;
+    text-align: center;
   }
 
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    gap: 8px;
   }
 
   .stat-card {
-    padding: 14px;
+    padding: 12px;
   }
 
   .stat-card .number {
     font-size: 22px;
   }
 
-  .stat-card h3 {
-    font-size: 11px;
-  }
-
-  .content-section {
-    padding: 14px;
-  }
-
   .filters {
     flex-direction: column;
-    padding: 12px;
   }
 
   .filters input,
   .filters select {
     width: 100%;
   }
-
-  table {
-    min-width: 500px;
-  }
-
-  .ranking-tabs {
-    gap: 6px;
-  }
-
-  .ranking-tabs .btn {
-    padding: 5px 10px;
-    font-size: 12px;
-  }
-}
-
-/* Small mobile */
-@media (max-width: 480px) {
-  .stats-grid {
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }
-
-  .stat-card {
-    padding: 10px;
-  }
-
-  .stat-card .number {
-    font-size: 20px;
-  }
-}
-
-/* ---- New Status Badges (v1.1) ---- */
-.status-pending {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.status-confirmed {
-  background: #dbeafe;
-  color: #1e40af;
-}
-
-.status-in_progress {
-  background: #e0e7ff;
-  color: #3730a3;
-}
-
-.status-cancelled {
-  background: #e5e7eb;
-  color: #374151;
-}
-
-.status-no_show {
-  background: #fee2e2;
-  color: #991b1b;
 }

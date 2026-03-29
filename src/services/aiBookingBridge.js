@@ -3,6 +3,8 @@ const logger = require('../utils/logger');
 const aiParser = require('./aiParser');
 const telegramUtil = require('../utils/telegram');
 const Customer = require('../models/customer');
+const Booking = require('../models/booking');
+const BookingService = require('./bookingService');
 
 // 優先使用新的 wecom 模塊
 let wecom;
@@ -20,14 +22,15 @@ try {
   wechatService = null;
 }
 
-// AI 預約會話狀態
+// AI 預約會話狀態（僅用於 ai_booking_sessions 表的 session_status 欄位）
 const SESSION_STATUS = {
   PARSING_CUSTOMER: 'parsing_customer',
-  PENDING_TECHNICIAN: 'pending_technician_confirmation',
+  PENDING_TECHNICIAN: 'pending_technician',
   CONFIRMED: 'confirmed',
   REJECTED: 'rejected',
-  RESCHEDULED_PENDING: 'rescheduled_pending_customer_approval',
+  RESCHEDULED_PENDING: 'rescheduled_pending',
   CLARIFICATION_NEEDED: 'clarification_needed',
+  CANCELLED: 'cancelled',
   EXPIRED: 'expired',
 };
 
@@ -90,17 +93,28 @@ class AIBookingBridge {
       // 5. 確保客戶存在
       const customer = await Customer.findOrCreate(chatId, userName);
 
-      // 6. 創建預約記錄
+      // 6. 通過 BookingService.createBooking 創建預約（含衝突檢測 + booking_code 生成）
       const bookingDate = date || new Date().toISOString().split('T')[0];
       const bookingTime = time || '15:00:00';
+      const timeSlot = this.getTimeSlot(bookingTime);
 
-      const booking = await db.query(
-        `INSERT INTO bookings (customer_id, therapist_id, location_id, booking_date, time_slot, time_option, status, booking_time)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-        [customer.id, therapist.id, location.id, bookingDate, this.getTimeSlot(bookingTime), 'A', 'pending_technician_confirmation', bookingTime]
-      );
-
-      const bookingRecord = booking.rows[0];
+      let bookingRecord;
+      try {
+        bookingRecord = await BookingService.createBooking(
+          customer.id,
+          therapist.id,
+          location.id,
+          bookingDate,
+          timeSlot,
+          'A',
+          { bookingTime, skipNotification: true }
+        );
+      } catch (conflictError) {
+        // 衝突檢測失敗，通知客戶
+        await telegramUtil.sendMessage(chatId, `❌ 預約失敗：${conflictError.message}\n\n請嘗試其他時間或技師。`);
+        await this.createSession(chatId, text, parsed, SESSION_STATUS.CLARIFICATION_NEEDED);
+        return null;
+      }
 
       // 7. 創建 AI 會話記錄
       const session = await this.createSession(
@@ -108,14 +122,13 @@ class AIBookingBridge {
       );
 
       // 8. 更新預約的 ai_session_id
-      await db.query('UPDATE bookings SET ai_session_id = $1 WHERE id = $2', [session.id, bookingRecord.id]);
+      await Booking.updateAiSessionId(bookingRecord.id, session.id);
 
-      // 9. 發送企業微信消息給技師（優先使用新的 wecom 模塊發送卡片消息）
+      // 9. 發送企業微信消息給技師
       const wechatUserId = therapist.wechat_userid || therapist.external_user_id;
       if (wechatUserId) {
         try {
           if (wecom && wecom.isConfigured()) {
-            // 使用新的 wecom 模塊發送卡片消息
             await wecom.sendBookingNotificationCard(wechatUserId, {
               bookingId: bookingRecord.id,
               customerName: customer.name || `用戶`,
@@ -127,18 +140,16 @@ class AIBookingBridge {
             });
             logger.info('企業微信卡片通知已發送', { therapistId: therapist.id, wechatUserId });
           } else if (wechatService) {
-            // 降級為舊模式文本消息
-            const message = `【新預約請求】\n日期：${bookingDate}\n時間：${bookingTime}\n場所：${location.name}\n\n請回覆「接受」或「拒絕」。`;
+            const message = `【新預約請求】\n預約編號：${bookingRecord.booking_code}\n日期：${bookingDate}\n時間：${bookingTime}\n場所：${location.name}\n\n請回覆「接受」或「拒絕」。`;
             await wechatService.sendMessageToExternalContact(wechatUserId, message);
             logger.info('企業微信文本通知已發送', { therapistId: therapist.id, wechatUserId });
           }
         } catch (wechatError) {
           logger.error('發送企業微信通知失敗', { error: wechatError.message });
           
-          // 嘗試降級為文本消息
           if (wecom && wecom.isConfigured()) {
             try {
-              const textMsg = `【新預約請求】\n預約編號: #${bookingRecord.id}\n日期：${bookingDate}\n時間：${bookingTime}\n場所：${location.name}\n\n請回覆「接受」或「拒絕」。`;
+              const textMsg = `【新預約請求】\n預約編號: ${bookingRecord.booking_code}\n日期：${bookingDate}\n時間：${bookingTime}\n場所：${location.name}\n\n請回覆「接受」或「拒絕」。`;
               await wecom.sendTextMessage(wechatUserId, textMsg);
             } catch (fallbackError) {
               logger.error('降級文本消息也失敗', { error: fallbackError.message });
@@ -151,6 +162,7 @@ class AIBookingBridge {
 
       // 10. 回覆客戶
       const confirmMsg = `✅ 預約請求已提交！\n\n` +
+        `預約編號：${bookingRecord.booking_code}\n` +
         `場所：${location.name}\n` +
         `技師：${technician_code}號\n` +
         `日期：${bookingDate}\n` +
@@ -160,6 +172,7 @@ class AIBookingBridge {
 
       logger.info('AI 預約已創建並通知技師', {
         bookingId: bookingRecord.id,
+        bookingCode: bookingRecord.booking_code,
         sessionId: session.id,
         chatId,
         therapistId: therapist.id,
@@ -201,7 +214,7 @@ class AIBookingBridge {
 
       // 2. 查找該技師最新的待確認預約會話
       const sessionResult = await db.query(
-        `SELECT s.*, b.booking_date, b.booking_time, b.customer_id, b.location_id,
+        `SELECT s.*, b.booking_date, b.booking_time, b.customer_id, b.location_id, b.booking_code,
                 l.name as location_name, c.telegram_id as customer_telegram_id
          FROM ai_booking_sessions s
          JOIN bookings b ON s.current_booking_id = b.id
@@ -223,7 +236,7 @@ class AIBookingBridge {
       const technicianCode = therapist.display_number || String(therapist.id);
       const companyName = session.location_name || '';
 
-      // 3. AI 解析技師回覆（只提取：是否接受、時間、日期、工號、公司名）
+      // 3. AI 解析技師回覆
       const parsed = await aiParser.parseTechnicianReply(replyText, technicianCode, companyName);
 
       // 4. 更新會話記錄
@@ -236,11 +249,16 @@ class AIBookingBridge {
 
       // 5. 根據解析結果處理
       if (parsed.accepted === true) {
-        // 技師接受預約
-        await db.query(
-          `UPDATE bookings SET status = 'confirmed', therapist_response_at = NOW(), updated_at = NOW() WHERE id = $1`,
-          [session.current_booking_id]
-        );
+        // 技師接受預約 → 使用 BookingService 確認
+        try {
+          await BookingService.confirmBooking(session.current_booking_id, therapist.id);
+        } catch (e) {
+          // 如果 BookingService 確認失敗（例如狀態已變更），直接更新狀態
+          logger.warn('通過 BookingService 確認失敗，直接更新', { error: e.message });
+          await Booking.updateStatus(session.current_booking_id, Booking.STATUS.CONFIRMED);
+          await Booking.markTherapistResponse(session.current_booking_id);
+        }
+
         await db.query(
           `UPDATE ai_booking_sessions SET session_status = $1, updated_at = NOW() WHERE id = $2`,
           [SESSION_STATUS.CONFIRMED, session.id]
@@ -248,6 +266,7 @@ class AIBookingBridge {
 
         // 通知客戶
         const confirmMsg = `✅ 預約已確認！\n\n` +
+          `預約編號：${session.booking_code || '#' + session.current_booking_id}\n` +
           `場所：${session.location_name}\n` +
           `日期：${session.booking_date}\n` +
           `時間：${session.booking_time}\n\n` +
@@ -257,7 +276,7 @@ class AIBookingBridge {
         // 通知技師確認成功
         if (wecom && wecom.isConfigured()) {
           try {
-            await wecom.sendTextMessage(wechatUserId, `✅ 您已成功接受預約 #${session.current_booking_id}`);
+            await wecom.sendTextMessage(wechatUserId, `✅ 您已成功接受預約 ${session.booking_code || '#' + session.current_booking_id}`);
           } catch (e) {
             logger.warn('發送確認回執失敗', { error: e.message });
           }
@@ -266,11 +285,8 @@ class AIBookingBridge {
         logger.info('預約已確認', { bookingId: session.current_booking_id });
       } else if (parsed.accepted === false) {
         if (parsed.new_time || parsed.new_date) {
-          // 技師提出新時間
-          await db.query(
-            `UPDATE bookings SET status = 'rescheduled_pending', updated_at = NOW() WHERE id = $1`,
-            [session.current_booking_id]
-          );
+          // 技師提出新時間 → 使用標準狀態 rescheduled
+          await Booking.updateStatus(session.current_booking_id, Booking.STATUS.RESCHEDULED);
           await db.query(
             `UPDATE ai_booking_sessions SET session_status = $1, updated_at = NOW() WHERE id = $2`,
             [SESSION_STATUS.RESCHEDULED_PENDING, session.id]
@@ -288,11 +304,15 @@ class AIBookingBridge {
 
           logger.info('技師提出新時間', { bookingId: session.current_booking_id, newTime: parsed.new_time, newDate: parsed.new_date });
         } else {
-          // 技師拒絕預約
-          await db.query(
-            `UPDATE bookings SET status = 'rejected_by_technician', therapist_response_at = NOW(), updated_at = NOW() WHERE id = $1`,
-            [session.current_booking_id]
-          );
+          // 技師拒絕預約 → 使用 BookingService 拒絕
+          try {
+            await BookingService.rejectBooking(session.current_booking_id, therapist.id);
+          } catch (e) {
+            logger.warn('通過 BookingService 拒絕失敗，直接更新', { error: e.message });
+            await Booking.updateStatus(session.current_booking_id, Booking.STATUS.CANCELLED, '技師拒絕');
+            await Booking.markTherapistResponse(session.current_booking_id);
+          }
+
           await db.query(
             `UPDATE ai_booking_sessions SET session_status = $1, updated_at = NOW() WHERE id = $2`,
             [SESSION_STATUS.REJECTED, session.id]
@@ -326,7 +346,7 @@ class AIBookingBridge {
     try {
       // 查找該客戶最新的改期待確認會話
       const sessionResult = await db.query(
-        `SELECT s.*, b.therapist_id, b.booking_date, b.booking_time, b.location_id,
+        `SELECT s.*, b.therapist_id, b.booking_date, b.booking_time, b.location_id, b.booking_code,
                 l.name as location_name, t.wechat_userid, t.external_user_id, t.display_number
          FROM ai_booking_sessions s
          JOIN bookings b ON s.current_booking_id = b.id
@@ -371,9 +391,9 @@ class AIBookingBridge {
         const newTime = parsedTechnician?.new_time || session.booking_time;
 
         await db.query(
-          `UPDATE bookings SET status = 'confirmed', booking_date = $1, booking_time = $2, 
-           therapist_response_at = NOW(), updated_at = NOW() WHERE id = $3`,
-          [newDate, newTime, session.current_booking_id]
+          `UPDATE bookings SET status = $1, booking_date = $2, booking_time = $3, 
+           therapist_response_at = NOW(), updated_at = NOW() WHERE id = $4`,
+          [Booking.STATUS.CONFIRMED, newDate, newTime, session.current_booking_id]
         );
         await db.query(
           `UPDATE ai_booking_sessions SET session_status = $1, updated_at = NOW() WHERE id = $2`,
@@ -381,17 +401,14 @@ class AIBookingBridge {
         );
 
         await telegramUtil.sendMessage(chatId,
-          `✅ 預約已確認！\n\n場所：${session.location_name}\n日期：${newDate}\n時間：${newTime}\n\n請準時到達。`
+          `✅ 預約已確認！\n\n預約編號：${session.booking_code || '#' + session.current_booking_id}\n場所：${session.location_name}\n日期：${newDate}\n時間：${newTime}\n\n請準時到達。`
         );
       } else {
-        // 客戶拒絕新時間
+        // 客戶拒絕新時間 → 使用標準 cancelled 狀態
+        await Booking.updateStatus(session.current_booking_id, Booking.STATUS.CANCELLED, '客戶拒絕改期');
         await db.query(
-          `UPDATE bookings SET status = 'cancelled_by_customer', updated_at = NOW() WHERE id = $1`,
-          [session.current_booking_id]
-        );
-        await db.query(
-          `UPDATE ai_booking_sessions SET session_status = 'cancelled', updated_at = NOW() WHERE id = $1`,
-          [session.id]
+          `UPDATE ai_booking_sessions SET session_status = $1, updated_at = NOW() WHERE id = $2`,
+          [SESSION_STATUS.CANCELLED, session.id]
         );
 
         await telegramUtil.sendMessage(chatId,

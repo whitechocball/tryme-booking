@@ -1,266 +1,155 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Tryme 管理後台 - 預約管理</title>
+  <title>預約管理 - Tryme Admin</title>
   <link rel="stylesheet" href="/admin-styles.css">
   <style>
-    .conflict-badge {
-      display: inline-block;
-      background: #fef2f2;
-      color: #dc2626;
-      border: 1px solid #fca5a5;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-size: 11px;
-      font-weight: 600;
-      margin-left: 6px;
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.6; }
-    }
-    .conflict-row {
-      background: #fef2f2 !important;
-      border-left: 3px solid #dc2626;
-    }
-    .status-select {
-      padding: 4px 8px;
-      border: 1px solid #d1d5db;
-      border-radius: 4px;
-      font-size: 12px;
-      background: white;
-      cursor: pointer;
-    }
-    .status-select:focus {
-      outline: none;
-      border-color: #3b82f6;
-      box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
-    }
-    .action-btns {
-      display: flex;
-      gap: 4px;
-      flex-wrap: wrap;
-    }
-    .btn-xs {
-      padding: 3px 8px;
-      font-size: 11px;
-      border-radius: 4px;
-      border: none;
-      cursor: pointer;
-      font-weight: 500;
-      white-space: nowrap;
-    }
+    /* 操作按鈕 */
+    .action-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+    .btn-xs { padding: 3px 8px; font-size: 11px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; white-space: nowrap; }
     .btn-confirm { background: #10b981; color: white; }
-    .btn-confirm:hover { background: #059669; }
     .btn-start { background: #3b82f6; color: white; }
-    .btn-start:hover { background: #2563eb; }
     .btn-complete { background: #8b5cf6; color: white; }
-    .btn-complete:hover { background: #7c3aed; }
     .btn-cancel-action { background: #ef4444; color: white; }
-    .btn-cancel-action:hover { background: #dc2626; }
     .btn-noshow { background: #f59e0b; color: white; }
-    .btn-noshow:hover { background: #d97706; }
-    .timeout-badge {
-      display: inline-block;
-      background: #fef3c7;
-      color: #92400e;
-      padding: 2px 6px;
-      border-radius: 8px;
-      font-size: 10px;
-      font-weight: 600;
-      margin-left: 4px;
-    }
-    .stats-row {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-    }
-    .mini-stat {
-      background: white;
-      padding: 12px 16px;
-      border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-      text-align: center;
-      min-width: 100px;
-    }
-    .mini-stat .label {
-      font-size: 11px;
-      color: #6b7280;
-      font-weight: 600;
-      text-transform: uppercase;
-    }
-    .mini-stat .value {
-      font-size: 22px;
-      font-weight: 700;
-      color: #3b82f6;
-    }
-    .mini-stat.conflict .value { color: #dc2626; }
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.5);
-      z-index: 2000;
-      align-items: center;
-      justify-content: center;
-    }
-    .modal-overlay.show { display: flex; }
-    .modal-box {
-      background: white;
-      padding: 24px;
-      border-radius: 12px;
-      max-width: 400px;
-      width: 90%;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-    }
-    .modal-box h3 {
-      margin-bottom: 16px;
-      font-size: 16px;
-      color: #1a1a2e;
-    }
-    .modal-box textarea {
-      width: 100%;
-      padding: 8px 12px;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      font-size: 13px;
-      min-height: 80px;
-      resize: vertical;
-    }
-    .modal-actions {
-      display: flex;
-      gap: 8px;
-      justify-content: flex-end;
-      margin-top: 16px;
-    }
+    .conflict-row { background: #fef2f2 !important; }
+    .conflict-badge { display: inline-block; background: #ef4444; color: white; font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-left: 4px; }
+    .timeout-badge { display: inline-block; background: #f59e0b; color: white; font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-left: 4px; }
+
+    /* 統一狀態 badge 樣式 */
     .status-pending { background: #fef3c7; color: #92400e; }
     .status-confirmed { background: #dbeafe; color: #1e40af; }
     .status-in_progress { background: #e0e7ff; color: #3730a3; }
     .status-completed { background: #d1fae5; color: #065f46; }
     .status-cancelled { background: #e5e7eb; color: #374151; }
     .status-no_show { background: #fee2e2; color: #991b1b; }
+    .status-rescheduled { background: #fce7f3; color: #9d174d; }
+
+    /* 模態框 */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; }
+    .modal-overlay.show { display: flex; }
+    .modal-content { background: white; border-radius: 12px; padding: 24px; max-width: 400px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+    .modal-content h3 { margin: 0 0 16px; font-size: 16px; }
+    .modal-content .form-group { margin-bottom: 12px; }
+    .modal-content label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .modal-content select, .modal-content textarea { width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; }
+    .modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+    .modal-actions button { flex: 1; padding: 8px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; }
+    .modal-actions .btn-primary { background: #3b82f6; color: white; }
+    .modal-actions .btn-secondary { background: #e5e7eb; color: #374151; }
   </style>
 </head>
 <body>
-  <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
-  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
-
   <div class="container">
-    <div class="sidebar" id="sidebar">
+    <!-- 側邊欄 -->
+    <button class="menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">☰</button>
+    <div class="sidebar-overlay" onclick="document.querySelector('.sidebar').classList.remove('open')"></div>
+    <aside class="sidebar">
       <div class="sidebar-header">
-        <h1>Tryme</h1>
-        <span class="version-tag">v1.1 | 2026-03-16</span>
+        <h1>TRYME</h1>
+        <span class="version-tag">v2.0.0</span>
       </div>
       <nav>
         <ul>
-          <li><a href="/admin"><span class="nav-icon">&#9632;</span> 儀表板</a></li>
-          <li><a href="/admin/bookings" class="active"><span class="nav-icon">&#128197;</span> 預約管理</a></li>
-          <li><a href="/admin/noshows"><span class="nav-icon">&#9888;</span> 爽約管理</a></li>
-          <li><a href="/admin/locations"><span class="nav-icon">&#127968;</span> 場所管理</a></li>
-          <li><a href="/admin/therapists"><span class="nav-icon">&#128100;</span> 技師管理</a></li>
-          <li><a href="/admin/customers"><span class="nav-icon">&#128101;</span> 客戶管理</a></li>
-          <li><a href="/admin/wechat-binding"><span class="nav-icon">&#128279;</span> 企業微信綁定</a></li>
+          <li><a href="/admin"><span class="nav-icon">📊</span> 儀表板</a></li>
+          <li><a href="/admin/bookings" class="active"><span class="nav-icon">📅</span> 預約管理</a></li>
+          <li><a href="/admin/therapists"><span class="nav-icon">👩‍⚕️</span> 技師管理</a></li>
+          <li><a href="/admin/locations"><span class="nav-icon">📍</span> 場所管理</a></li>
+          <li><a href="/admin/customers"><span class="nav-icon">👥</span> 客戶管理</a></li>
+          <li><a href="/admin/noshows"><span class="nav-icon">⚠️</span> 爽約記錄</a></li>
+          <li><a href="/admin/wechat-binding"><span class="nav-icon">💬</span> 微信綁定</a></li>
         </ul>
       </nav>
-    </div>
+    </aside>
 
-    <div class="main-content">
+    <!-- 主內容 -->
+    <main class="main-content">
       <div class="page-header">
         <h1>預約管理</h1>
-        <div>
-          <button class="btn btn-sm" onclick="detectConflicts()" title="手動執行衝突檢測">衝突檢測</button>
-          <button class="btn btn-sm" onclick="handleTimeouts()" title="手動處理超時預約" style="margin-left:6px;">超時處理</button>
-        </div>
+        <span class="header-time" id="current-time"></span>
       </div>
 
-      <!-- 統計概覽 -->
-      <div class="stats-row" id="stats-row">
-        <div class="mini-stat"><div class="label">總計</div><div class="value" id="stat-total">0</div></div>
-        <div class="mini-stat"><div class="label">待確認</div><div class="value" id="stat-pending">0</div></div>
-        <div class="mini-stat"><div class="label">已確認</div><div class="value" id="stat-confirmed">0</div></div>
-        <div class="mini-stat"><div class="label">進行中</div><div class="value" id="stat-inprogress">0</div></div>
-        <div class="mini-stat"><div class="label">已完成</div><div class="value" id="stat-completed">0</div></div>
-        <div class="mini-stat conflict"><div class="label">衝突</div><div class="value" id="stat-conflicts">0</div></div>
+      <!-- 統計卡片 -->
+      <div class="stats-grid">
+        <div class="stat-card"><h3>總預約</h3><div class="number" id="stat-total">0</div></div>
+        <div class="stat-card"><h3>待確認</h3><div class="number" id="stat-pending">0</div></div>
+        <div class="stat-card"><h3>已確認</h3><div class="number" id="stat-confirmed">0</div></div>
+        <div class="stat-card"><h3>進行中</h3><div class="number" id="stat-inprogress">0</div></div>
+        <div class="stat-card"><h3>已完成</h3><div class="number" id="stat-completed">0</div></div>
+        <div class="stat-card"><h3>衝突</h3><div class="number" id="stat-conflicts" style="color:#ef4444">0</div></div>
       </div>
 
       <!-- 篩選器 -->
       <div class="filters">
-        <input type="date" id="filter-date" placeholder="篩選日期">
-        <select id="filter-status">
-          <option value="">所有狀態</option>
+        <input type="date" id="filter-date" onchange="loadBookings()">
+        <select id="filter-status" onchange="loadBookings()">
+          <option value="">全部狀態</option>
           <option value="pending">待確認</option>
-          <option value="confirmed">技師已確認</option>
+          <option value="confirmed">已確認</option>
           <option value="in_progress">進行中</option>
           <option value="completed">已完成</option>
           <option value="cancelled">已取消</option>
           <option value="no_show">爽約</option>
-          <optgroup label="舊狀態（兼容）">
-            <option value="waiting_therapist">等待技師回覆</option>
-            <option value="waiting_service">等待進入服務</option>
-            <option value="customer_no_show">客戶爽約</option>
-            <option value="therapist_cancelled">技師取消</option>
-            <option value="therapist_no_show">技師爽約</option>
-          </optgroup>
+          <option value="rescheduled">改期待確認</option>
         </select>
-        <select id="filter-therapist">
-          <option value="">所有技師</option>
+        <select id="filter-therapist" onchange="loadBookings()">
+          <option value="">全部技師</option>
         </select>
-        <select id="filter-location">
-          <option value="">所有場所</option>
+        <select id="filter-location" onchange="loadBookings()">
+          <option value="">全部場所</option>
         </select>
-        <label style="display:flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;">
-          <input type="checkbox" id="filter-conflict"> 僅衝突
+        <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" id="filter-conflict" onchange="loadBookings()"> 僅衝突
         </label>
-        <button class="btn" onclick="loadBookings()">搜索</button>
-        <button class="btn btn-outline" onclick="resetFilters()">重置</button>
+        <button class="btn btn-sm" onclick="resetFilters()">重置</button>
+        <button class="btn btn-sm btn-danger" onclick="detectConflicts()">衝突檢測</button>
+        <button class="btn btn-sm" style="background:#f59e0b;color:white;" onclick="handleTimeouts()">超時處理</button>
       </div>
 
+      <!-- 消息區 -->
+      <div id="message"></div>
+
+      <!-- 預約列表 -->
       <div class="content-section">
-        <div id="message"></div>
-        <div class="table-wrapper">
-          <div id="bookings-container" class="loading">加載中...</div>
+        <div class="table-wrapper" id="bookings-container">
+          <div class="loading">載入中...</div>
         </div>
       </div>
-    </div>
+    </main>
   </div>
 
   <!-- 狀態更改模態框 -->
   <div class="modal-overlay" id="statusModal">
-    <div class="modal-box">
+    <div class="modal-content">
       <h3 id="modal-title">更改預約狀態</h3>
+      <input type="hidden" id="modal-booking-id">
       <div class="form-group">
         <label>新狀態</label>
-        <select id="modal-status" class="status-select" style="width:100%; padding:8px;">
+        <select id="modal-status">
           <option value="pending">待確認</option>
-          <option value="confirmed">技師已確認</option>
+          <option value="confirmed">已確認</option>
           <option value="in_progress">進行中</option>
           <option value="completed">已完成</option>
           <option value="cancelled">已取消</option>
           <option value="no_show">爽約</option>
+          <option value="rescheduled">改期待確認</option>
         </select>
       </div>
       <div class="form-group">
-        <label>備註（可選）</label>
-        <textarea id="modal-reason" placeholder="輸入更改原因..."></textarea>
+        <label>原因（選填）</label>
+        <textarea id="modal-reason" rows="3" placeholder="輸入原因..."></textarea>
       </div>
-      <input type="hidden" id="modal-booking-id">
       <div class="modal-actions">
-        <button class="btn btn-outline" onclick="closeStatusModal()">取消</button>
-        <button class="btn" onclick="submitStatusChange()">確認更改</button>
+        <button class="btn-secondary" onclick="closeStatusModal()">取消</button>
+        <button class="btn-primary" onclick="submitStatusChange()">確認更改</button>
       </div>
     </div>
   </div>
 
   <script>
-    function toggleSidebar() {
-      document.getElementById('sidebar').classList.toggle('open');
-      document.getElementById('sidebarOverlay').classList.toggle('show');
-    }
-
+    // ========== 統一狀態映射（與後端 Booking.STATUS_LABELS 一致） ==========
     const STATUS_MAP = {
       'pending': '待確認',
       'confirmed': '技師已確認',
@@ -268,11 +157,7 @@
       'completed': '已完成',
       'cancelled': '已取消',
       'no_show': '爽約',
-      'waiting_therapist': '等待技師回覆',
-      'waiting_service': '等待進入服務',
-      'customer_no_show': '客戶爽約',
-      'therapist_cancelled': '技師取消',
-      'therapist_no_show': '技師爽約',
+      'rescheduled': '改期待確認',
     };
 
     const TIME_SLOT_MAP = {
@@ -281,12 +166,20 @@
       'evening': '晚上',
     };
 
-    // 載入篩選器選項
+    // 更新時間
+    function updateTime() {
+      const now = new Date();
+      document.getElementById('current-time').textContent = now.toLocaleString('zh-TW');
+    }
+    updateTime();
+    setInterval(updateTime, 1000);
+
+    // 載入篩選選項
     async function loadFilterOptions() {
       try {
         const [therapistsRes, locationsRes] = await Promise.all([
           fetch('/api/therapists'),
-          fetch('/api/locations')
+          fetch('/api/locations'),
         ]);
         const therapists = await therapistsRes.json();
         const locations = await locationsRes.json();
@@ -295,7 +188,7 @@
         therapists.forEach(t => {
           const opt = document.createElement('option');
           opt.value = t.id;
-          opt.textContent = t.name + (t.display_number ? ` (#${t.display_number})` : '');
+          opt.textContent = (t.display_number || '') + ' ' + t.name;
           therapistSelect.appendChild(opt);
         });
 
@@ -328,8 +221,8 @@
         const res = await fetch(url);
         const stats = await res.json();
         document.getElementById('stat-total').textContent = stats.totalBookings || 0;
-        document.getElementById('stat-pending').textContent = (stats.pending || 0) + (stats.waitingTherapist > (stats.pending || 0) ? stats.waitingTherapist - (stats.pending || 0) : 0);
-        document.getElementById('stat-confirmed').textContent = (stats.confirmed || 0) + (stats.waitingService > (stats.confirmed || 0) ? stats.waitingService - (stats.confirmed || 0) : 0);
+        document.getElementById('stat-pending').textContent = (stats.pending || 0) + (stats.rescheduled || 0);
+        document.getElementById('stat-confirmed').textContent = stats.confirmed || 0;
         document.getElementById('stat-inprogress').textContent = stats.inProgress || 0;
         document.getElementById('stat-completed').textContent = stats.completed || 0;
         document.getElementById('stat-conflicts').textContent = stats.conflicts || 0;
@@ -394,26 +287,24 @@
           html += '<td>' + timeDisplay + '</td>';
           html += '<td><span class="status-badge ' + statusClass + '">' + statusLabel + '</span></td>';
 
-          // 操作按鈕
+          // 操作按鈕（使用統一狀態）
           html += '<td><div class="action-btns">';
           
-          // 根據當前狀態顯示可用操作
-          if (b.status === 'pending' || b.status === 'waiting_therapist') {
+          if (b.status === 'pending' || b.status === 'rescheduled') {
             html += '<button class="btn-xs btn-confirm" onclick="quickAction(' + b.id + ', \'confirm\')">確認</button>';
             html += '<button class="btn-xs btn-cancel-action" onclick="quickAction(' + b.id + ', \'cancel\')">取消</button>';
           }
-          if (b.status === 'confirmed' || b.status === 'waiting_service') {
+          if (b.status === 'confirmed') {
             html += '<button class="btn-xs btn-start" onclick="quickAction(' + b.id + ', \'start\')">開始</button>';
             html += '<button class="btn-xs btn-cancel-action" onclick="quickAction(' + b.id + ', \'cancel\')">取消</button>';
           }
           if (b.status === 'in_progress') {
             html += '<button class="btn-xs btn-complete" onclick="quickAction(' + b.id + ', \'complete\')">完成</button>';
           }
-          if (['pending', 'confirmed', 'in_progress', 'waiting_therapist', 'waiting_service'].includes(b.status)) {
+          if (['pending', 'confirmed', 'in_progress', 'rescheduled'].includes(b.status)) {
             html += '<button class="btn-xs btn-noshow" onclick="quickAction(' + b.id + ', \'noshow\')">爽約</button>';
           }
 
-          // 手動更改狀態按鈕
           html += '<button class="btn-xs" style="background:#6b7280; color:white;" onclick="openStatusModal(' + b.id + ', \'' + b.status + '\')">改狀態</button>';
 
           html += '</div></td>';

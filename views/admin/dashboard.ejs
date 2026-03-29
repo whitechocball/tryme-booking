@@ -14,7 +14,7 @@
     <div class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <h1>Tryme</h1>
-        <span class="version-tag">v1.1 | 2026-03-16</span>
+        <span class="version-tag">v2.0.0 | 2026-03-29</span>
       </div>
       <nav>
         <ul>
@@ -39,9 +39,9 @@
       <div class="content-section" style="margin-bottom:24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
         <div>
           <strong style="font-size:16px; color:#1a1a2e;">Tryme 預約管理系統</strong>
-          <span style="background:#dbeafe; color:#1e40af; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; margin-left:8px;">v1.1</span>
+          <span style="background:#dbeafe; color:#1e40af; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; margin-left:8px;">v2.0.0</span>
         </div>
-        <div style="color:#6b7280; font-size:13px;">發佈日期：2026-03-16 | 新增：衝突檢測 & 狀態流程</div>
+        <div style="color:#6b7280; font-size:13px;">發佈日期：2026-03-29 | 統一狀態機 & 遷移整合</div>
       </div>
 
       <!-- 統計卡片 -->
@@ -114,11 +114,7 @@
       'completed': '已完成',
       'cancelled': '已取消',
       'no_show': '爽約',
-      'waiting_therapist': '等待技師回覆',
-      'waiting_service': '等待進入服務',
-      'customer_no_show': '客戶爽約',
-      'therapist_cancelled': '技師取消',
-      'therapist_no_show': '技師爽約',
+      'rescheduled': '改期待確認',
     };
 
     async function loadStats() {
@@ -127,8 +123,8 @@
         const response = await fetch('/api/bookings/stats/daily?date=' + today);
         const stats = await response.json();
         document.getElementById('today-bookings').textContent = stats.totalBookings || 0;
-        document.getElementById('waiting-therapist').textContent = stats.waitingTherapist || stats.pendingBookings || 0;
-        document.getElementById('waiting-service').textContent = stats.waitingService || stats.confirmedBookings || 0;
+        document.getElementById('waiting-therapist').textContent = stats.pending || 0;
+        document.getElementById('waiting-service').textContent = stats.confirmed || 0;
         document.getElementById('in-progress').textContent = stats.inProgress || 0;
         document.getElementById('conflicts').textContent = stats.conflicts || 0;
       } catch (e) {

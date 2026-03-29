@@ -2,28 +2,21 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const db = require('./utils/db');
-const { ensureColumns } = require('./utils/ensureColumns');
 const logger = require('./utils/logger');
+const Booking = require('./models/booking');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ==================== 企業微信域名驗證文件路由 ====================
-// 企業微信需要驗證域名所有權，會要求在根目錄放置一個驗證文件
-// 文件名格式通常為 WW_verify_xxxxxxxx.txt
-// 用戶從企業微信後台下載驗證文件後，放入 public/ 目錄即可
-// 此路由同時支持通過環境變量配置驗證文件內容
-
 app.get('/WW_verify_:filename.txt', (req, res) => {
   const filename = `WW_verify_${req.params.filename}.txt`;
   const filePath = path.join(__dirname, '../public', filename);
   
-  // 優先從文件系統讀取
   if (fs.existsSync(filePath)) {
     return res.sendFile(filePath);
   }
   
-  // 其次從環境變量讀取
   const envContent = process.env.WECHAT_VERIFY_FILE_CONTENT;
   const envFilename = process.env.WECHAT_VERIFY_FILE_NAME;
   
@@ -36,14 +29,11 @@ app.get('/WW_verify_:filename.txt', (req, res) => {
 });
 
 // ==================== 中間件 ====================
-// 注意：企業微信回調需要原始 XML body，所以需要在 json 解析之前處理
 app.use('/api/wechat/callback', (req, res, next) => {
-  // 讓 wechatCallbackRoute 自己處理 body 解析
   next();
 });
 
 app.use('/wechat/webhook', (req, res, next) => {
-  // 讓 wechatWebhook 自己處理 body 解析
   next();
 });
 
@@ -60,9 +50,6 @@ app.set('views', path.join(__dirname, '../views'));
 const basicAuth = (req, res, next) => {
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Basic ')) {
-    const adminUsername = process.env.ADMIN_USERNAME || 'admin';
-    const adminPassword = process.env.ADMIN_PASSWORD || 'tryme2024';
-    const credentials = Buffer.from(`${adminUsername}:${adminPassword}`).toString('base64');
     return res.status(401).set('WWW-Authenticate', `Basic realm="Tryme Admin"`).json({ error: '需要認證' });
   }
 
@@ -82,7 +69,6 @@ const basicAuth = (req, res, next) => {
 app.get('/health', (req, res) => {
   const uptime = process.uptime();
   
-  // 檢查企業微信配置狀態
   let wecomStatus = 'not_configured';
   try {
     const wecom = require('./utils/wecom');
@@ -98,15 +84,15 @@ app.get('/health', (req, res) => {
     database: 'connected',
     timestamp: new Date().toISOString(),
     uptime: Math.floor(uptime),
-    version: '1.3.0',
-    releaseDate: '2026-03-19',
+    version: '2.0.0',
+    releaseDate: '2026-03-29',
     features: [
       'telegram-ai-booking',
       'wechat-bridge',
       'wecom-card-messages',
       'wecom-callback',
       'booking-conflict-detection',
-      'booking-status-workflow',
+      'unified-status-machine',
       'timeout-handling',
     ],
     wecom: wecomStatus,
@@ -143,7 +129,6 @@ app.get('/admin/wechat-binding', basicAuth, (req, res) => {
 });
 
 // ==================== 企業微信預約操作頁面 ====================
-// 技師點擊卡片消息中的「查看預約」按鈕後跳轉到此頁面
 app.get('/api/wechat/booking-action', async (req, res) => {
   try {
     const { booking_id, action } = req.query;
@@ -167,6 +152,9 @@ app.get('/api/wechat/booking-action', async (req, res) => {
     }
     
     const booking = bookingResult.rows[0];
+    // 標準化狀態（兼容舊數據）
+    const normalizedStatus = Booking.normalizeStatus(booking.status);
+    const statusLabel = Booking.STATUS_LABELS[normalizedStatus] || booking.status;
     
     // 如果帶有 action 參數，直接處理
     if (action === 'accept' || action === 'reject') {
@@ -214,10 +202,13 @@ app.get('/api/wechat/booking-action', async (req, res) => {
       }
     }
     
-    // 顯示預約詳情和操作按鈕
+    // 顯示預約詳情和操作按鈕（使用統一狀態判斷）
     const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN
       ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
       : (process.env.APP_URL || 'https://tryme-app-production.up.railway.app');
+    
+    const isPending = normalizedStatus === 'pending' || normalizedStatus === 'rescheduled';
+    const statusCssClass = isPending ? 'pending' : (normalizedStatus === 'confirmed' ? 'confirmed' : 'cancelled');
     
     res.send(`
       <html>
@@ -243,8 +234,8 @@ app.get('/api/wechat/booking-action', async (req, res) => {
       <body>
       <div class="card">
         <h2>預約 #${booking_id}</h2>
-        <div class="status status-${booking.status === 'pending' || booking.status === 'pending_technician_confirmation' ? 'pending' : booking.status === 'confirmed' ? 'confirmed' : 'cancelled'}">
-          狀態：${booking.status}
+        <div class="status status-${statusCssClass}">
+          狀態：${statusLabel}
         </div>
         <div class="info">
           <p><span class="label">客戶</span><br>${booking.customer_name || '未知'}</p>
@@ -252,7 +243,7 @@ app.get('/api/wechat/booking-action', async (req, res) => {
           <p><span class="label">日期</span><br>${booking.booking_date}</p>
           <p><span class="label">時間</span><br>${booking.booking_time || booking.time_slot || '未指定'}</p>
         </div>
-        ${['pending', 'pending_technician_confirmation', 'waiting_therapist'].includes(booking.status) ? `
+        ${isPending ? `
         <div class="actions">
           <a class="btn btn-accept" href="${baseUrl}/api/wechat/booking-action?booking_id=${booking_id}&action=accept">接受</a>
           <a class="btn btn-reject" href="${baseUrl}/api/wechat/booking-action?booking_id=${booking_id}&action=reject">拒絕</a>
@@ -334,7 +325,7 @@ app.get('/api/ai-sessions', basicAuth, async (req, res) => {
   }
 });
 
-// 診斷端點 - 檢查數據庫列
+// 診斷端點 - 檢查數據庫列（保留用於調試）
 app.get('/api/diag/columns', basicAuth, async (req, res) => {
   try {
     const result = await db.query(`
@@ -350,40 +341,16 @@ app.get('/api/diag/columns', basicAuth, async (req, res) => {
   }
 });
 
-// 修復端點 - 手動添加缺失列
-app.post('/api/diag/fix-columns', basicAuth, async (req, res) => {
-  const results = [];
-  const statements = [
-    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_code VARCHAR(50)',
-    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS display_number VARCHAR(50)',
-    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS wechat_id_primary VARCHAR(100)',
-    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS wechat_id_secondary VARCHAR(100)',
-    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS phone_number VARCHAR(20)',
-    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS profile_pic_url TEXT',
-    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS work_start_time VARCHAR(10)',
-    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS work_end_time VARCHAR(10)',
-    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS current_location_id INTEGER',
-    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS telegram_id VARCHAR(100)',
-    'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS wechat_userid VARCHAR(255)',
-    'ALTER TABLE no_shows ADD COLUMN IF NOT EXISTS therapist_notes TEXT',
-    'ALTER TABLE locations ADD COLUMN IF NOT EXISTS description TEXT',
-    'ALTER TABLE locations ADD COLUMN IF NOT EXISTS map_url TEXT',
-    'ALTER TABLE locations ADD COLUMN IF NOT EXISTS venue_code VARCHAR(50)',
-    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS ai_session_id INTEGER',
-    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_time VARCHAR(20)',
-  ];
-  
-  for (const stmt of statements) {
-    try {
-      await db.query(stmt);
-      results.push({ sql: stmt.substring(0, 80), status: 'ok' });
-    } catch (e) {
-      results.push({ sql: stmt.substring(0, 80), status: 'error', error: e.message });
-    }
-  }
-  res.json({ results });
+// 診斷端點 - 查看狀態枚舉定義
+app.get('/api/diag/statuses', basicAuth, (req, res) => {
+  res.json({
+    statuses: Booking.STATUS,
+    labels: Booking.STATUS_LABELS,
+    activeStatuses: Booking.ACTIVE_STATUSES,
+    validTransitions: Booking.VALID_TRANSITIONS,
+    legacyMap: Booking.LEGACY_STATUS_MAP,
+  });
 });
-
 
 // 錯誤處理
 app.use((err, req, res, next) => {
@@ -391,7 +358,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: '伺服器錯誤' });
 });
 
-// 數據庫遷移
+// ==================== 數據庫遷移（整合版） ====================
 async function runMigrations(maxRetries = 5) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -402,6 +369,7 @@ async function runMigrations(maxRetries = 5) {
         throw new Error('數據庫連接失敗');
       }
 
+      // 執行 migrations 目錄下的 SQL 檔案（按檔名排序）
       const migrationsDir = path.join(__dirname, '../migrations');
       const files = fs.readdirSync(migrationsDir)
         .filter(f => f.endsWith('.sql'))
@@ -418,55 +386,6 @@ async function runMigrations(maxRetries = 5) {
           console.log(`  ⚠ ${file} 部分失敗: ${fileError.message.substring(0, 80)}，繼續執行...`);
         }
       }
-
-      // 確保所有表有所有必需的列
-      console.log('  確保所有表有所有必需的列...');
-      await ensureColumns();
-      
-      const alterStatements = [
-        // therapists 表
-        'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS display_number VARCHAR(50)',
-        'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS wechat_id_primary VARCHAR(100)',
-        'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS wechat_id_secondary VARCHAR(100)',
-        'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS phone_number VARCHAR(20)',
-        'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS profile_pic_url TEXT',
-        'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS work_start_time VARCHAR(10)',
-        'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS work_end_time VARCHAR(10)',
-        'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS current_location_id INTEGER',
-        'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS telegram_id VARCHAR(100)',
-        'ALTER TABLE therapists ADD COLUMN IF NOT EXISTS wechat_userid VARCHAR(255)',
-        // bookings 表
-        'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_code VARCHAR(50)',
-        'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS ai_session_id INTEGER',
-        'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_time VARCHAR(20)',
-        // 新功能：衝突檢測 & 狀態流程
-        'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS has_conflict BOOLEAN DEFAULT FALSE',
-        'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS timeout_notified BOOLEAN DEFAULT FALSE',
-        'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS status_changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
-        'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancel_reason TEXT',
-        // no_shows 表
-        'ALTER TABLE no_shows ADD COLUMN IF NOT EXISTS therapist_notes TEXT',
-        'ALTER TABLE no_shows ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP',
-        // locations/venues 表
-        'ALTER TABLE locations ADD COLUMN IF NOT EXISTS description TEXT',
-        'ALTER TABLE locations ADD COLUMN IF NOT EXISTS map_url TEXT',
-        'ALTER TABLE locations ADD COLUMN IF NOT EXISTS venue_code VARCHAR(50)'
-      ];
-      
-      for (const stmt of alterStatements) {
-        try {
-          await db.query(stmt);
-          const colMatch = stmt.match(/ADD COLUMN IF NOT EXISTS (\w+)/);
-          const colName = colMatch ? colMatch[1] : 'unknown';
-          console.log(`    ✓ ${colName} 已確保`);
-        } catch (e) {
-          const colMatch = stmt.match(/ADD COLUMN IF NOT EXISTS (\w+)/);
-          const colName = colMatch ? colMatch[1] : 'unknown';
-          console.log(`    ⚠ ${colName}: ${e.message.substring(0, 50)}`);
-        }
-      }
-      
-      console.log('  ✓ 所有表列檢查完成');
 
       // 插入默認時間段配置
       await db.query(`
@@ -505,10 +424,9 @@ async function runMigrations(maxRetries = 5) {
   return false;
 }
 
-// 啟動伺服器
+// ==================== 啟動伺服器 ====================
 async function startServer() {
   try {
-    // 先執行遷移，確保數據庫準備好
     console.log('🔄 執行數據庫遷移...');
     const migrationSuccess = await runMigrations();
     
@@ -516,7 +434,6 @@ async function startServer() {
       console.warn('⚠️ 遷移失敗，但將繼續啟動伺服器');
     }
     
-    // 啟動 Express 伺服器
     const server = app.listen(PORT, () => {
       console.log(`✅ 伺服器運行在 http://localhost:${PORT}`);
     });
@@ -538,7 +455,7 @@ async function startServer() {
       console.log('⚠️ 企業微信模塊載入失敗:', e.message);
     }
 
-    // 啟動定時任務（超時處理 & 衝突檢測）
+    // 啟動定時任務
     try {
       const SchedulerService = require('./services/schedulerService');
       SchedulerService.init();
@@ -547,7 +464,7 @@ async function startServer() {
       logger.error('定時任務初始化失敗', { error: schedulerError.message });
     }
 
-    // 啟動 Telegram AI 預約 Bot（polling 模式）
+    // 啟動 Telegram AI 預約 Bot
     try {
       const { initAIBookingBot } = require('./bot/aiBookingBot');
       initAIBookingBot();
@@ -590,7 +507,6 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('❌ 未處理的 Promise 拒絕:', reason);
 });
 
-// 啟動伺服器
 startServer();
 
 module.exports = app;

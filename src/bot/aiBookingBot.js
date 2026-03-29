@@ -1,6 +1,7 @@
 const { Telegraf } = require('telegraf');
 const logger = require('../utils/logger');
 const Customer = require('../models/customer');
+const Booking = require('../models/booking');
 const AIBookingBridge = require('../services/aiBookingBridge');
 require('dotenv').config();
 
@@ -81,24 +82,26 @@ function initAIBookingBot() {
         return;
       }
 
-      const statusLabels = {
-        'pending_technician_confirmation': '⏳ 等待技師確認',
-        'confirmed': '✅ 已確認',
-        'rejected_by_technician': '❌ 技師已拒絕',
-        'rescheduled_pending': '🔄 改期待確認',
-        'cancelled_by_customer': '🚫 已取消',
-        'waiting_therapist': '⏳ 等待技師回覆',
-        'waiting_service': '✅ 等待服務',
-        'completed': '✅ 已完成',
-        'customer_no_show': '⚠️ 客戶爽約',
-        'therapist_cancelled': '❌ 技師取消',
+      // 使用 Booking 模型的統一狀態標籤
+      const statusIcons = {
+        'pending': '⏳',
+        'confirmed': '✅',
+        'in_progress': '🔄',
+        'completed': '✅',
+        'cancelled': '❌',
+        'no_show': '⚠️',
+        'rescheduled': '🔄',
       };
 
       let msg = '📋 您最近的預約：\n\n';
       for (const b of result.rows) {
-        const status = statusLabels[b.status] || b.status;
+        // 使用統一的狀態標籤，對未知舊狀態做 normalize
+        const normalizedStatus = Booking.normalizeStatus(b.status);
+        const statusLabel = Booking.STATUS_LABELS[normalizedStatus] || b.status;
+        const icon = statusIcons[normalizedStatus] || '❓';
         const dateStr = b.booking_date ? new Date(b.booking_date).toISOString().split('T')[0] : '未知';
-        msg += `${status}\n`;
+        msg += `${icon} ${statusLabel}\n`;
+        if (b.booking_code) msg += `  編號：${b.booking_code}\n`;
         msg += `  場所：${b.location_name || '未知'}\n`;
         msg += `  技師：${b.display_number || b.therapist_name || '未知'}號\n`;
         msg += `  日期：${dateStr}\n`;
